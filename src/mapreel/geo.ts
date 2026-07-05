@@ -156,6 +156,101 @@ export const fitZoom = (
   return Math.max(2.2, Math.min(9, z));
 };
 
+/** Inverse of latToWorldY. */
+export const worldYToLat = (wy: number): number =>
+  (Math.asin(Math.tanh(2 * Math.PI * (0.5 - wy))) * 180) / Math.PI;
+
+const smoothstep = (x: number): number =>
+  x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+
+/** Post-arrival forward drift added over the hold portion of a segment. */
+const DRIFT = 0.14;
+
+export interface CameraSegment {
+  startSec: number;
+  endSec: number;
+  camera: SegmentCamera;
+}
+
+/**
+ * How long the camera flight into a segment lasts: scales with the mercator
+ * distance from the previous place, clamped so short segments still get a
+ * decent hold on the destination.
+ */
+export const flyDurationFor = (
+  prev: CameraSegment,
+  cur: CameraSegment
+): number => {
+  const d = Math.hypot(
+    lonToWorldX(cur.camera.lon) - lonToWorldX(prev.camera.lon),
+    latToWorldY(cur.camera.lat) - latToWorldY(prev.camera.lat)
+  );
+  const segDur = cur.endSec - cur.startSec;
+  return Math.min(Math.max(0.9 + d * 30, 1.2), 2.6, segDur * 0.5);
+};
+
+/**
+ * One continuous camera path over the whole video. The first segment is the
+ * classic zoom-in intro; every later segment starts with a flight from the
+ * previous place: centers pan in mercator space while the zoom follows a
+ * "zoom out, then back in" arc deep enough to keep both places framable —
+ * far hops zoom way out, neighbors barely at all. Shared by the renderer
+ * and the tile prefetcher, so drawn tiles are always downloaded.
+ */
+export const cameraAtGlobalTime = (
+  segments: CameraSegment[],
+  tSec: number,
+  width: number,
+  height: number
+): Camera => {
+  if (segments.length === 0) return { lon: 0, lat: 0, zoom: 2 };
+  let i = segments.length - 1;
+  for (let k = 0; k < segments.length; k++) {
+    if (tSec < segments[k].endSec) {
+      i = k;
+      break;
+    }
+  }
+  const seg = segments[i];
+  const dur = seg.endSec - seg.startSec;
+  const t = Math.min(Math.max(tSec - seg.startSec, 0), dur);
+
+  if (i === 0) return cameraAtTime(seg.camera, t, dur);
+
+  const prev = segments[i - 1];
+  const fly = flyDurationFor(prev, seg);
+  if (t >= fly) {
+    const hold = Math.min(1, (t - fly) / Math.max(0.001, dur - fly));
+    return {
+      lon: seg.camera.lon,
+      lat: seg.camera.lat,
+      zoom: seg.camera.zoomEnd + DRIFT * hold,
+    };
+  }
+
+  const e = smoothstep(t / fly);
+  const x1 = lonToWorldX(prev.camera.lon);
+  const y1 = latToWorldY(prev.camera.lat);
+  const x2 = lonToWorldX(seg.camera.lon);
+  const y2 = latToWorldY(seg.camera.lat);
+  const z1 = prev.camera.zoomEnd + DRIFT;
+  const z2 = seg.camera.zoomEnd;
+
+  // Zoom deep enough mid-flight that origin and destination could both fit.
+  const d = Math.hypot(x2 - x1, y2 - y1);
+  const zBoth =
+    d < 1e-9
+      ? 12
+      : Math.log2((0.45 * Math.min(width, height)) / (TILE_SIZE * d));
+  const arcFloor = Math.min(z1, z2, Math.max(1.8, zBoth));
+  const bump = Math.max(0, (z1 + z2) / 2 - arcFloor);
+  const zoom = z1 + (z2 - z1) * e - bump * Math.sin(Math.PI * e);
+
+  const wx = x1 + (x2 - x1) * e;
+  const wy = y1 + (y2 - y1) * e;
+  return { lon: wx * 360 - 180, lat: worldYToLat(wy), zoom };
+};
+
 /** Great-circle distance between two lon/lat points in km. */
 export const haversineKm = (a: LonLat, b: LonLat): number => {
   const R = 6371;

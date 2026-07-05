@@ -1,7 +1,16 @@
 import React from "react";
-import { AbsoluteFill, Img, interpolate, staticFile, useVideoConfig } from "remotion";
+import {
+  AbsoluteFill,
+  Img,
+  interpolate,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import {
   Camera,
+  cameraAtGlobalTime,
+  flyDurationFor,
   layersForZoom,
   project,
   tileScreenRect,
@@ -424,14 +433,59 @@ const PlaceLabel: React.FC<{
   );
 };
 
-/** Full map view for one segment: tiles + highlight + label. */
-export const SatelliteMap: React.FC<{
-  timeline: Timeline;
+/** A segment's overlay set: highlight, annotations, and label. */
+const SegmentOverlay: React.FC<{
+  cam: Camera;
   segment: MapSegment;
   segmentIndex: number;
   tSec: number;
-  cam: Camera;
-}> = ({ timeline, segment, segmentIndex, tSec, cam }) => {
+}> = ({ cam, segment, segmentIndex, tSec }) => (
+  <>
+    {segment.rings.length > 0 ? (
+      <HighlightPolygon
+        cam={cam}
+        segment={segment}
+        tSec={tSec}
+        patternId={`hatch-${segmentIndex}`}
+      />
+    ) : null}
+    {(segment.annotations ?? []).map((ann, i) =>
+      ann.type === "ruler" ? (
+        <Ruler key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
+      ) : (
+        <Link key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
+      )
+    )}
+    <PlaceLabel cam={cam} segment={segment} tSec={tSec} />
+  </>
+);
+
+/**
+ * The whole map as one continuous shot: a single camera flies from place to
+ * place (no cuts), overlays keyed to each segment's arrival.
+ */
+export const MapStage: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
+  const frame = useCurrentFrame();
+  const { fps, width, height } = useVideoConfig();
+  const t = frame / fps;
+  const segs = timeline.segments;
+
+  let idx = segs.length - 1;
+  for (let k = 0; k < segs.length; k++) {
+    if (t < segs[k].endSec) {
+      idx = k;
+      break;
+    }
+  }
+  const seg = segs[idx];
+  const cam = cameraAtGlobalTime(segs, t, width, height);
+  const localT = t - seg.startSec;
+  const fly = idx === 0 ? 0 : flyDurationFor(segs[idx - 1], seg);
+  // Overlay clock starts as the flight settles, so the border draws on arrival.
+  const overlayT = localT - (idx === 0 ? 0 : Math.max(0, fly - 0.8));
+  // The previous highlight fades out during the first moments of the flight.
+  const prevFade = idx > 0 ? Math.max(0, 1 - localT / 0.6) : 0;
+
   return (
     <AbsoluteFill style={{ backgroundColor: "#06131d" }}>
       {/* Color grade: richer, punchier satellite look */}
@@ -452,22 +506,22 @@ export const SatelliteMap: React.FC<{
             )
           : null}
       </AbsoluteFill>
-      {segment.rings.length > 0 ? (
-        <HighlightPolygon
-          cam={cam}
-          segment={segment}
-          tSec={tSec}
-          patternId={`hatch-${segmentIndex}`}
-        />
+      {prevFade > 0 ? (
+        <AbsoluteFill style={{ opacity: prevFade }}>
+          <SegmentOverlay
+            cam={cam}
+            segment={segs[idx - 1]}
+            segmentIndex={idx - 1}
+            tSec={99}
+          />
+        </AbsoluteFill>
       ) : null}
-      {(segment.annotations ?? []).map((ann, i) =>
-        ann.type === "ruler" ? (
-          <Ruler key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
-        ) : (
-          <Link key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
-        )
-      )}
-      <PlaceLabel cam={cam} segment={segment} tSec={tSec} />
+      <SegmentOverlay
+        cam={cam}
+        segment={seg}
+        segmentIndex={idx}
+        tSec={overlayT}
+      />
       {/* subtle vignette for legibility */}
       <AbsoluteFill
         style={{

@@ -8,52 +8,15 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { cameraAtTime } from "./geo";
 import { Captions } from "./Captions";
 import { PhotoPopup } from "./PhotoPopup";
-import { SatelliteMap } from "./SatelliteMap";
-import type { MapSegment, Timeline } from "./types";
+import { MapStage } from "./SatelliteMap";
+import type { Timeline } from "./types";
 import timelineJson from "./timeline.json";
 import timelineWideJson from "./timeline-wide.json";
 
 export const TIMELINE = timelineJson as unknown as Timeline;
 export const TIMELINE_WIDE = timelineWideJson as unknown as Timeline;
-
-/** Frames the incoming segment overlaps the previous one (crossfade). */
-const FADE_FRAMES = 12;
-
-const SegmentView: React.FC<{
-  timeline: Timeline;
-  segment: MapSegment;
-  segmentIndex: number;
-  fadeLead: number;
-}> = ({ timeline, segment, segmentIndex, fadeLead }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const segDur = segment.endSec - segment.startSec;
-  // During the crossfade lead-in, hold the camera at t = 0.
-  const tSec = Math.max(0, Math.min(segDur, (frame - fadeLead) / fps));
-  const cam = cameraAtTime(segment.camera, tSec, segDur);
-  const opacity =
-    fadeLead > 0
-      ? interpolate(frame, [0, fadeLead], [0, 1], {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-        })
-      : 1;
-
-  return (
-    <AbsoluteFill style={{ opacity }}>
-      <SatelliteMap
-        timeline={timeline}
-        segment={segment}
-        segmentIndex={segmentIndex}
-        tSec={tSec}
-        cam={cam}
-      />
-    </AbsoluteFill>
-  );
-};
 
 const Credits: React.FC<{ lines: string[] }> = ({ lines }) => {
   const frame = useCurrentFrame();
@@ -141,23 +104,7 @@ const MapReelBase: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
         />
       ) : null}
 
-      {timeline.segments.map((seg, i) => {
-        const fadeLead = i > 0 ? FADE_FRAMES : 0;
-        return (
-          <Sequence
-            key={i}
-            from={toF(seg.startSec) - fadeLead}
-            durationInFrames={toF(seg.endSec) - toF(seg.startSec) + fadeLead}
-          >
-            <SegmentView
-              timeline={timeline}
-              segment={seg}
-              segmentIndex={i}
-              fadeLead={fadeLead}
-            />
-          </Sequence>
-        );
-      })}
+      <MapStage timeline={timeline} />
 
       {timeline.photos.map((cue, i) => (
         <Sequence

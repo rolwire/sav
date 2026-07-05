@@ -1,6 +1,6 @@
 import * as path from "path";
 import {
-  cameraAtTime,
+  cameraAtGlobalTime,
   layersForZoom,
   visibleTiles,
 } from "../src/mapreel/geo";
@@ -32,21 +32,18 @@ export const enumerateTiles = (
 ): TileId[] => {
   const set = new Set<string>();
 
-  for (const seg of segments) {
-    const dur = seg.endSec - seg.startSec;
-    // Sample at every frame — the exact time grid the renderer evaluates.
-    // Coarser sampling can miss tiles: the eased zoom moves fastest at the
-    // start of a segment and can cross a layer threshold between samples.
-    const frames = Math.ceil(dur * cfg.fps) + 1;
-    for (let f = 0; f <= frames; f++) {
-      const t = f / cfg.fps;
-      const cam = cameraAtTime(seg.camera, Math.min(t, dur), dur);
-      for (const layer of layersForZoom(cam.zoom, cfg.minZoom, cfg.maxZoom)) {
-        const range = visibleTiles(cam, cfg.width, cfg.height, layer.z, 96);
-        for (let x = range.minX; x <= range.maxX; x++) {
-          for (let y = range.minY; y <= range.maxY; y++) {
-            set.add(`${layer.z}/${x}/${y}`);
-          }
+  // Sample the continuous global camera path at every frame — the exact
+  // time grid the renderer evaluates — so flight paths between places are
+  // fully covered, and no layer-threshold crossing can slip between samples.
+  const totalSec = segments[segments.length - 1]?.endSec ?? 0;
+  const frames = Math.ceil(totalSec * cfg.fps) + 1;
+  for (let f = 0; f <= frames; f++) {
+    const cam = cameraAtGlobalTime(segments, f / cfg.fps, cfg.width, cfg.height);
+    for (const layer of layersForZoom(cam.zoom, cfg.minZoom, cfg.maxZoom)) {
+      const range = visibleTiles(cam, cfg.width, cfg.height, layer.z, 96);
+      for (let x = range.minX; x <= range.maxX; x++) {
+        for (let y = range.minY; y <= range.maxY; y++) {
+          set.add(`${layer.z}/${x}/${y}`);
         }
       }
     }
