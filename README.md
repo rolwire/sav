@@ -1,3 +1,62 @@
+# sav — Remotion Video Projects
+
+Two compositions live in this repo:
+
+1. **Map Reel** — automated GeoBites-style map-animation reels (VO in → video out)
+2. **Ark of the Covenant** — 20-scene cinematic sequence
+
+---
+
+# Map Reel — automated map-animation pipeline
+
+Drop in a voiceover; get back a vertical (1080×1920) reel where a satellite
+map flies between every place you mention, highlights it GeoBites-style
+(glowing border draw-on + cyan hatch fill), pops up real photos from public
+libraries when keywords are spoken, and shows word-synced captions.
+
+## One command
+
+```bash
+npm run reel -- --vo path/to/voiceover.mp3
+npm run reel:render          # renders out/mapreel.mp4
+```
+
+## What the pipeline does
+
+| Step | Tool | Notes |
+|---|---|---|
+| 1. Transcribe | whisper.cpp (auto-installed to `.whisper/`) | word-level timestamps |
+| 2. Detect places | OpenStreetMap Nominatim (free) | real border polygons, spoken order |
+| 3. Satellite tiles | Esri World Imagery (free) | only the tiles the camera will see |
+| 4. Keyword photos | Wikimedia Commons → Openverse fallback | openly licensed, attribution kept |
+| 5. Build timeline | `src/mapreel/timeline.json` | drives the Remotion `MapReel` comp |
+
+## Options
+
+```bash
+--transcript t.json   # skip whisper (Word[] JSON or whisper.cpp JSON)
+--places "Egypt,Nile" # skip place detection, use these in this order
+--model medium.en     # whisper model (default base.en)
+--max-photos 8        # cap keyword photos
+--no-photos           # maps only
+```
+
+## Offline demo (no VO, no network)
+
+```bash
+npm run reel:demo     # procedurally generated islands + placeholder photos
+npm start             # preview the MapReel composition in Remotion Studio
+npm run reel:render
+```
+
+## Attribution
+
+The end card credits Esri World Imagery, OpenStreetMap contributors, and each
+photo's author/license automatically. Keep it in published videos — it is the
+condition of the free imagery/photo sources.
+
+---
+
 # Ark of the Covenant — Cinematic Sequence
 
 A 20-scene Remotion video project for the **Ark of the Covenant** documentary reveal.

@@ -1,6 +1,7 @@
 import React from "react";
 import { Composition } from "remotion";
 import { ArkCovenantComposition } from "./ArkCovenant";
+import { MapReel, TIMELINE } from "./mapreel/MapReel";
 import { SCENES, TOTAL_FRAMES, FPS_EXPORT } from "./scenes/sceneData";
 
 const TITLE_DURATION = 60;
@@ -8,6 +9,16 @@ const FULL_DURATION = TOTAL_FRAMES + TITLE_DURATION;
 
 export const RemotionRoot: React.FC = () => (
   <>
+    <Composition
+      id="MapReel"
+      component={MapReel}
+      durationInFrames={TIMELINE.durationInFrames}
+      fps={TIMELINE.fps}
+      width={TIMELINE.width}
+      height={TIMELINE.height}
+      defaultProps={{}}
+    />
+
     <Composition
       id="ArkCovenant"
       component={ArkCovenantComposition}

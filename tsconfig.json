@@ -2,14 +2,14 @@
   "compilerOptions": {
     "lib": ["dom", "esnext"],
     "module": "commonjs",
-    "target": "es6",
+    "target": "es2020",
     "jsx": "react",
     "strict": true,
     "esModuleInterop": true,
-    "outDir": "./build",
-    "rootDir": "./src",
+    "resolveJsonModule": true,
     "skipLibCheck": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src", "pipeline", "scripts"]
 }
