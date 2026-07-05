@@ -111,14 +111,25 @@ const HighlightPolygon: React.FC<{
         </defs>
         {segment.flagSrc ? (
           <g clipPath={`url(#clip-${patternId})`} opacity={fillOpacity * 0.88}>
-            <image
-              href={staticFile(segment.flagSrc)}
-              x={minX}
-              y={minY}
-              width={Math.max(1, maxX - minX)}
-              height={Math.max(1, maxY - minY)}
-              preserveAspectRatio="xMidYMid slice"
-            />
+            {(() => {
+              // Cover the polygon bbox with a 4:3 flag, computed manually:
+              // browsers render a referenced SVG with its own (letterbox)
+              // aspect behavior, ignoring preserveAspectRatio="slice" here.
+              const bw = Math.max(1, maxX - minX);
+              const bh = Math.max(1, maxY - minY);
+              const scale = Math.max(bw / 4, bh / 3);
+              const fw = 4 * scale;
+              const fh = 3 * scale;
+              return (
+                <image
+                  href={staticFile(segment.flagSrc)}
+                  x={minX + (bw - fw) / 2}
+                  y={minY + (bh - fh) / 2}
+                  width={fw}
+                  height={fh}
+                />
+              );
+            })()}
           </g>
         ) : (
           <path
