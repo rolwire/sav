@@ -156,6 +156,19 @@ export const fitZoom = (
   return Math.max(2.2, Math.min(9, z));
 };
 
+/** Great-circle distance between two lon/lat points in km. */
+export const haversineKm = (a: LonLat, b: LonLat): number => {
+  const R = 6371;
+  const dLat = ((b[1] - a[1]) * Math.PI) / 180;
+  const dLon = ((b[0] - a[0]) * Math.PI) / 180;
+  const la1 = (a[1] * Math.PI) / 180;
+  const la2 = (b[1] * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+
 /** Center of a bbox (naive; antimeridian-spanning bboxes get the wide view). */
 export const bboxCenter = (
   bbox: [number, number, number, number]

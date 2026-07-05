@@ -154,6 +154,16 @@ const MapReelBase: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
         </Sequence>
       ))}
 
+      {(timeline.sfx ?? []).map((cue, i) => (
+        <Sequence
+          key={`sfx-${i}`}
+          from={toF(cue.startSec)}
+          durationInFrames={Math.round(2 * fps)}
+        >
+          <Audio src={staticFile(cue.src)} volume={cue.volume} />
+        </Sequence>
+      ))}
+
       <Captions captions={timeline.captions} />
 
       {timeline.credits.length > 0 ? (

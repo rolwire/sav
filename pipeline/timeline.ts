@@ -1,11 +1,13 @@
-import { bboxCenter, fitZoom } from "../src/mapreel/geo";
+import { bboxCenter, fitZoom, haversineKm } from "../src/mapreel/geo";
 import type {
   CaptionGroup,
   MapSegment,
   PhotoCue,
+  SfxCue,
   Timeline,
 } from "../src/mapreel/types";
 import type { PlaceHit } from "./analyze";
+import type { SfxPaths } from "./sfx";
 import type { Word } from "./transcribe";
 
 export interface TimelineOptions {
@@ -18,7 +20,16 @@ export interface TimelineOptions {
   tileMaxZoom?: number;
   durationSec: number;
   credits?: string[];
+  /** When set, whoosh/pop/ding cues are added automatically. */
+  sfx?: SfxPaths | null;
 }
+
+export interface SegmentOptions {
+  /** Add a GeoSolved-style width ruler to segments long enough to fit one. */
+  rulers?: boolean;
+}
+
+const RULER_MIN_SEGMENT_SEC = 6;
 
 const MIN_SEGMENT_SEC = 3;
 
@@ -27,9 +38,11 @@ export const placesToSegments = (
   places: PlaceHit[],
   durationSec: number,
   width: number,
-  height: number
+  height: number,
+  segOpts: SegmentOptions = {}
 ): MapSegment[] => {
   const segments: MapSegment[] = [];
+  const bboxes: [number, number, number, number][] = [];
 
   for (const place of places) {
     // Start slightly before the place is spoken so the zoom lands on the name.
@@ -54,9 +67,34 @@ export const placesToSegments = (
       rings: place.rings,
       flagSrc: place.flagSrc,
     });
+    bboxes.push(place.bbox);
     if (segments.length >= 2) {
       segments[segments.length - 2].endSec = start;
     }
+  }
+
+  if (segOpts.rulers) {
+    segments.forEach((seg, i) => {
+      if (seg.endSec - seg.startSec < RULER_MIN_SEGMENT_SEC) return;
+      const bbox = bboxes[i];
+      // Lower third of the shape, so the ruler doesn't cross the place label.
+      const rulerLat = bbox[1] + (bbox[3] - bbox[1]) * 0.3;
+      const a: [number, number] = [bbox[0], rulerLat];
+      const b: [number, number] = [bbox[2], rulerLat];
+      const km = haversineKm(a, b);
+      if (km < 1) return;
+      const mi = km * 0.621371;
+      seg.annotations = [
+        {
+          type: "ruler",
+          a,
+          b,
+          startOffsetSec: 3.2,
+          labelMi: `${Math.round(mi).toLocaleString("en-US")} miles`,
+          labelKm: `${Math.round(km).toLocaleString("en-US")} km`,
+        },
+      ];
+    });
   }
 
   return segments;
@@ -93,6 +131,34 @@ export const wordsToCaptions = (words: Word[]): CaptionGroup[] => {
   return groups;
 };
 
+/** Build whoosh/pop/ding cues from what happens on screen. */
+const buildSfxCues = (
+  segments: MapSegment[],
+  photos: PhotoCue[],
+  sfx: SfxPaths
+): SfxCue[] => {
+  const cues: SfxCue[] = [];
+  segments.forEach((seg, i) => {
+    cues.push({
+      src: sfx.whoosh,
+      startSec: Math.max(0, seg.startSec - (i > 0 ? 0.2 : 0)),
+      volume: 0.5,
+    });
+    cues.push({ src: sfx.ding, startSec: seg.startSec + 1.7, volume: 0.35 });
+    for (const ann of seg.annotations ?? []) {
+      cues.push({
+        src: sfx.pop,
+        startSec: seg.startSec + ann.startOffsetSec,
+        volume: 0.3,
+      });
+    }
+  });
+  for (const p of photos) {
+    cues.push({ src: sfx.pop, startSec: p.startSec, volume: 0.55 });
+  }
+  return cues.sort((a, b) => a.startSec - b.startSec);
+};
+
 export const buildTimeline = (
   words: Word[],
   segments: MapSegment[],
@@ -115,6 +181,7 @@ export const buildTimeline = (
     segments,
     photos,
     captions: wordsToCaptions(words),
+    sfx: opts.sfx ? buildSfxCues(segments, photos, opts.sfx) : [],
     credits: opts.credits ?? [],
   };
 };

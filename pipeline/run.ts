@@ -12,6 +12,9 @@
  *   --max-photos <n>     Max keyword photos (default 8)
  *   --no-photos          Skip photo fetching
  *   --no-flags           Countries get the hatch highlight instead of their flag
+ *   --no-sfx             Skip whoosh/pop/ding sound effects
+ *   --no-ruler           Skip the auto "X miles / Y km" width ruler
+ *   --style neon         Neon glowing-outline highlight for every place
  *   --aspect <a>         9:16 (default), 16:9, or both
  *
  * Then render with: npm run reel:render (9:16) / npm run reel:render:wide (16:9)
@@ -21,6 +24,7 @@ import * as path from "path";
 import { extractPlaces, pickPhotoKeywords } from "./analyze";
 import { parseAspects } from "./aspects";
 import { attachFlags } from "./flags";
+import { ensureSfx } from "./sfx";
 import { downloadTiles, fetchPhotos, photosToCues } from "./assets";
 import { buildTimeline, placesToSegments } from "./timeline";
 import { audioDurationSec, loadTranscript, transcribeVO, Word } from "./transcribe";
@@ -79,9 +83,15 @@ const main = async (): Promise<void> => {
     attachFlags(places, PUBLIC_DIR);
   }
   const aspects = parseAspects(args.aspect);
+  const styleOverride =
+    args.style === "neon" || args.style === "hatch"
+      ? (args.style as "neon" | "hatch")
+      : undefined;
   const segmentsByAspect = aspects.map((a) => ({
     aspect: a,
-    segments: placesToSegments(places, durationSec, a.width, a.height),
+    segments: placesToSegments(places, durationSec, a.width, a.height, {
+      rulers: !args["no-ruler"],
+    }).map((s) => (styleOverride ? { ...s, highlightStyle: styleOverride } : s)),
   }));
   const names = segmentsByAspect[0].segments.map((s) => s.name).join(" → ");
   console.log(`  ${segmentsByAspect[0].segments.length} map segments: ${names}`);
@@ -125,6 +135,8 @@ const main = async (): Promise<void> => {
     ...new Set(photoCues.map((p) => `Photo: ${p.attribution}`).filter(Boolean)),
   ].slice(0, 5) as string[];
 
+  const sfx = args["no-sfx"] ? null : ensureSfx(PUBLIC_DIR);
+
   for (const { aspect, segments } of segmentsByAspect) {
     const timeline = buildTimeline(words, segments, photoCues, {
       fps: FPS,
@@ -136,6 +148,7 @@ const main = async (): Promise<void> => {
       tileMinZoom,
       tileMaxZoom,
       credits,
+      sfx,
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

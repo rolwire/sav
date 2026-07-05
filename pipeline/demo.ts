@@ -24,6 +24,7 @@ import type { PlaceHit } from "./analyze";
 import { parseAspects } from "./aspects";
 import { enumerateTiles } from "./assets";
 import { attachFlags } from "./flags";
+import { ensureSfx } from "./sfx";
 import { buildTimeline, placesToSegments } from "./timeline";
 import type { Word } from "./transcribe";
 import { ensureDir, parseArgs } from "./util";
@@ -262,7 +263,13 @@ const main = (): void => {
   const tilesDir = path.join(PUBLIC_DIR, "tiles");
   const segmentsByAspect = aspects.map((aspect) => ({
     aspect,
-    segments: placesToSegments(places, durationSec, aspect.width, aspect.height),
+    segments: placesToSegments(places, durationSec, aspect.width, aspect.height, {
+      rulers: true,
+    }).map((s) =>
+      // Showcase both looks: Nigeria keeps its flag fill, Ghana gets the
+      // GeoSolved-style neon outline.
+      s.name === "Ghana" ? { ...s, highlightStyle: "neon" as const } : s
+    ),
   }));
   for (const { aspect, segments } of segmentsByAspect) {
     const tileCfg = {
@@ -304,6 +311,8 @@ const main = (): void => {
     side = side === "left" ? "right" : "left";
   }
 
+  const sfx = ensureSfx(PUBLIC_DIR);
+
   for (const { aspect, segments } of segmentsByAspect) {
     const timeline = buildTimeline(words, segments, photoCues, {
       fps: FPS,
@@ -317,6 +326,7 @@ const main = (): void => {
       credits: [
         "Demo mode — borders: Natural Earth · flags: flag-icons · imagery: procedural",
       ],
+      sfx,
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

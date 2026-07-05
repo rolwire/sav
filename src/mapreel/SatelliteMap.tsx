@@ -7,7 +7,7 @@ import {
   tileScreenRect,
   visibleTiles,
 } from "./geo";
-import type { MapSegment, Timeline } from "./types";
+import type { MapSegment, RulerAnnotation, Timeline } from "./types";
 
 const tileUrl = (template: string, z: number, x: number, y: number): string =>
   staticFile(
@@ -91,6 +91,47 @@ const HighlightPolygon: React.FC<{
     extrapolateRight: "clamp",
   });
 
+  const style = segment.highlightStyle ?? (segment.flagSrc ? "flag" : "hatch");
+
+  if (style === "neon") {
+    // GeoSolved look: glowing outline + everything outside the border dims.
+    const dimPath = `M0,0H${width}V${height}H0Z ${d}`;
+    return (
+      <AbsoluteFill>
+        <svg width={width} height={height} style={{ position: "absolute" }}>
+          <path
+            d={dimPath}
+            fillRule="evenodd"
+            fill="rgba(2, 12, 24, 0.42)"
+            opacity={fillOpacity}
+          />
+          <path
+            d={d}
+            fill="none"
+            stroke="rgba(0, 210, 255, 0.6)"
+            strokeWidth={16}
+            strokeLinejoin="round"
+            pathLength={100}
+            strokeDasharray={100}
+            strokeDashoffset={100 - draw * 100}
+            style={{ filter: "blur(7px)" }}
+          />
+          <path
+            d={d}
+            fill="none"
+            stroke="rgba(170, 245, 255, 1)"
+            strokeWidth={4.5}
+            strokeLinejoin="round"
+            pathLength={100}
+            strokeDasharray={100}
+            strokeDashoffset={100 - draw * 100}
+            style={{ filter: "drop-shadow(0 0 12px rgba(0,220,255,1))" }}
+          />
+        </svg>
+      </AbsoluteFill>
+    );
+  }
+
   return (
     <AbsoluteFill>
       <svg width={width} height={height} style={{ position: "absolute" }}>
@@ -109,7 +150,7 @@ const HighlightPolygon: React.FC<{
             <path d={d} />
           </clipPath>
         </defs>
-        {segment.flagSrc ? (
+        {style === "flag" && segment.flagSrc ? (
           <g clipPath={`url(#clip-${patternId})`} opacity={fillOpacity * 0.88}>
             {(() => {
               // Cover the polygon bbox with a 4:3 flag, computed manually:
@@ -151,6 +192,98 @@ const HighlightPolygon: React.FC<{
           style={{ filter: "drop-shadow(0 0 10px rgba(64,224,255,0.9))" }}
         />
       </svg>
+    </AbsoluteFill>
+  );
+};
+
+/** GeoSolved-style animated distance ruler: line grows a→b, ticks + label. */
+const Ruler: React.FC<{
+  cam: Camera;
+  ann: RulerAnnotation;
+  tSec: number;
+}> = ({ cam, ann, tSec }) => {
+  const { width, height } = useVideoConfig();
+  const t = tSec - ann.startOffsetSec;
+  if (t < 0) return null;
+
+  const grow = interpolate(t, [0, 0.7], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const labelIn = interpolate(t, [0.6, 1.0], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const p1 = project(cam, width, height, ann.a[0], ann.a[1]);
+  const p2 = project(cam, width, height, ann.b[0], ann.b[1]);
+  const ex = p1.x + (p2.x - p1.x) * grow;
+  const ey = p1.y + (p2.y - p1.y) * grow;
+  const midX = (p1.x + p2.x) / 2;
+  const midY = (p1.y + p2.y) / 2;
+
+  const tick = (x: number, y: number, show: boolean) =>
+    show ? (
+      <line
+        x1={x}
+        y1={y - 16}
+        x2={x}
+        y2={y + 16}
+        stroke="white"
+        strokeWidth={4}
+      />
+    ) : null;
+
+  return (
+    <AbsoluteFill>
+      <svg
+        width={width}
+        height={height}
+        style={{
+          position: "absolute",
+          filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.9))",
+        }}
+      >
+        <line x1={p1.x} y1={p1.y} x2={ex} y2={ey} stroke="white" strokeWidth={4} />
+        {tick(p1.x, p1.y, true)}
+        {tick(p2.x, p2.y, grow >= 1)}
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          left: midX,
+          top: midY - 34,
+          transform: `translate(-50%, -100%) scale(${0.8 + 0.2 * labelIn})`,
+          opacity: labelIn,
+          textAlign: "center",
+          fontFamily: "Helvetica, Arial, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 44,
+            fontWeight: 800,
+            color: "white",
+            backgroundColor: "rgba(200, 40, 40, 0.85)",
+            padding: "4px 18px",
+            borderRadius: 8,
+            boxShadow: "0 4px 18px rgba(0,0,0,0.6)",
+          }}
+        >
+          {ann.labelMi}
+        </div>
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 34,
+            fontWeight: 700,
+            color: "white",
+            textShadow: "0 2px 8px rgba(0,0,0,0.95)",
+          }}
+        >
+          {ann.labelKm}
+        </div>
+      </div>
     </AbsoluteFill>
   );
 };
@@ -205,19 +338,24 @@ export const SatelliteMap: React.FC<{
 }> = ({ timeline, segment, segmentIndex, tSec, cam }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: "#06131d" }}>
-      {timeline.tileTemplate
-        ? layersForZoom(cam.zoom, timeline.tileMinZoom, timeline.tileMaxZoom).map(
-            (layer) => (
-              <TileLayer
-                key={layer.z}
-                cam={cam}
-                template={timeline.tileTemplate as string}
-                z={layer.z}
-                opacity={layer.opacity}
-              />
+      {/* Color grade: richer, punchier satellite look */}
+      <AbsoluteFill
+        style={{ filter: "saturate(1.25) contrast(1.08) brightness(0.94)" }}
+      >
+        {timeline.tileTemplate
+          ? layersForZoom(cam.zoom, timeline.tileMinZoom, timeline.tileMaxZoom).map(
+              (layer) => (
+                <TileLayer
+                  key={layer.z}
+                  cam={cam}
+                  template={timeline.tileTemplate as string}
+                  z={layer.z}
+                  opacity={layer.opacity}
+                />
+              )
             )
-          )
-        : null}
+          : null}
+      </AbsoluteFill>
       {segment.rings.length > 0 ? (
         <HighlightPolygon
           cam={cam}
@@ -226,6 +364,9 @@ export const SatelliteMap: React.FC<{
           patternId={`hatch-${segmentIndex}`}
         />
       ) : null}
+      {(segment.annotations ?? []).map((ann, i) => (
+        <Ruler key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
+      ))}
       <PlaceLabel cam={cam} segment={segment} tSec={tSec} />
       {/* subtle vignette for legibility */}
       <AbsoluteFill
