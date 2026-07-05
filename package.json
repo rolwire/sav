@@ -10,6 +10,7 @@
     "reel": "tsx pipeline/run.ts",
     "reel:demo": "tsx pipeline/demo.ts",
     "reel:render": "npx remotion render MapReel out/mapreel.mp4",
+    "reel:render:wide": "npx remotion render MapReelWide out/mapreel-wide.mp4",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

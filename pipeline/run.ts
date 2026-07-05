@@ -11,12 +11,14 @@
  *   --model <name>       Whisper model (default base.en; try medium.en for accuracy)
  *   --max-photos <n>     Max keyword photos (default 8)
  *   --no-photos          Skip photo fetching
+ *   --aspect <a>         9:16 (default), 16:9, or both
  *
- * Then render with: npm run reel:render
+ * Then render with: npm run reel:render (9:16) / npm run reel:render:wide (16:9)
  */
 import * as fs from "fs";
 import * as path from "path";
 import { extractPlaces, pickPhotoKeywords } from "./analyze";
+import { parseAspects } from "./aspects";
 import { downloadTiles, fetchPhotos, photosToCues } from "./assets";
 import { buildTimeline, placesToSegments } from "./timeline";
 import { audioDurationSec, loadTranscript, transcribeVO, Word } from "./transcribe";
@@ -24,10 +26,8 @@ import { ensureDir, parseArgs } from "./util";
 
 const ROOT = process.cwd();
 const PUBLIC_DIR = path.join(ROOT, "public", "mapreel");
-const TIMELINE_PATH = path.join(ROOT, "src", "mapreel", "timeline.json");
+const TIMELINE_DIR = path.join(ROOT, "src", "mapreel");
 
-const WIDTH = 1080;
-const HEIGHT = 1920;
 const FPS = 30;
 
 const main = async (): Promise<void> => {
@@ -73,8 +73,13 @@ const main = async (): Promise<void> => {
     );
     process.exit(1);
   }
-  const segments = placesToSegments(places, durationSec, WIDTH, HEIGHT);
-  console.log(`  ${segments.length} map segments: ${segments.map((s) => s.name).join(" → ")}`);
+  const aspects = parseAspects(args.aspect);
+  const segmentsByAspect = aspects.map((a) => ({
+    aspect: a,
+    segments: placesToSegments(places, durationSec, a.width, a.height),
+  }));
+  const names = segmentsByAspect[0].segments.map((s) => s.name).join(" → ");
+  console.log(`  ${segmentsByAspect[0].segments.length} map segments: ${names}`);
 
   // ── 3. Satellite tiles ────────────────────────────────────────────────────
   console.log("\n[3/5] Downloading satellite tiles (Esri World Imagery)...");
@@ -82,11 +87,14 @@ const main = async (): Promise<void> => {
   ensureDir(tilesDir);
   const tileMinZoom = 2;
   const tileMaxZoom = 12;
-  await downloadTiles(
-    segments,
-    { width: WIDTH, height: HEIGHT, fps: FPS, minZoom: tileMinZoom, maxZoom: tileMaxZoom },
-    tilesDir
-  );
+  for (const { aspect, segments } of segmentsByAspect) {
+    console.log(`  ${aspect.name}:`);
+    await downloadTiles(
+      segments,
+      { width: aspect.width, height: aspect.height, fps: FPS, minZoom: tileMinZoom, maxZoom: tileMaxZoom },
+      tilesDir
+    );
+  }
 
   // ── 4. Keyword photos ─────────────────────────────────────────────────────
   let photoCues = [] as ReturnType<typeof photosToCues>;
@@ -112,22 +120,26 @@ const main = async (): Promise<void> => {
     ...new Set(photoCues.map((p) => `Photo: ${p.attribution}`).filter(Boolean)),
   ].slice(0, 5) as string[];
 
-  const timeline = buildTimeline(words, segments, photoCues, {
-    fps: FPS,
-    width: WIDTH,
-    height: HEIGHT,
-    durationSec,
-    audioSrc: `mapreel/${path.basename(voDest)}`,
-    tileTemplate: "mapreel/tiles/{z}/{x}/{y}.jpg",
-    tileMinZoom,
-    tileMaxZoom,
-    credits,
-  });
+  for (const { aspect, segments } of segmentsByAspect) {
+    const timeline = buildTimeline(words, segments, photoCues, {
+      fps: FPS,
+      width: aspect.width,
+      height: aspect.height,
+      durationSec,
+      audioSrc: `mapreel/${path.basename(voDest)}`,
+      tileTemplate: "mapreel/tiles/{z}/{x}/{y}.jpg",
+      tileMinZoom,
+      tileMaxZoom,
+      credits,
+    });
+    const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
+    fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));
+    console.log(`  ${aspect.name} -> ${path.relative(ROOT, timelinePath)} (${aspect.compositionId})`);
+  }
 
-  fs.writeFileSync(TIMELINE_PATH, JSON.stringify(timeline, null, 2));
-  console.log(`  wrote ${path.relative(ROOT, TIMELINE_PATH)}`);
   console.log(
-    `\nDone. Preview with \`npm start\` (MapReel composition) or render with \`npm run reel:render\`.`
+    `\nDone. Preview with \`npm start\`, render with \`npm run reel:render\`` +
+      ` (9:16) or \`npm run reel:render:wide\` (16:9).`
   );
 };
 

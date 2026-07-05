@@ -21,6 +21,15 @@ npm run reel -- --vo path/to/voiceover.mp3
 npm run reel:render          # renders out/mapreel.mp4
 ```
 
+Works in **9:16** (default), **16:9**, or both:
+
+```bash
+npm run reel -- --vo vo.mp3 --aspect 16:9    # landscape only
+npm run reel -- --vo vo.mp3 --aspect both    # both formats in one run
+npm run reel:render          # 9:16  -> out/mapreel.mp4      (MapReel)
+npm run reel:render:wide     # 16:9  -> out/mapreel-wide.mp4 (MapReelWide)
+```
+
 ## What the pipeline does
 
 | Step | Tool | Notes |
@@ -39,6 +48,7 @@ npm run reel:render          # renders out/mapreel.mp4
 --model medium.en     # whisper model (default base.en)
 --max-photos 8        # cap keyword photos
 --no-photos           # maps only
+--aspect both         # 9:16 (default), 16:9, or both
 ```
 
 ## Offline demo (no VO, no network)

@@ -14,8 +14,10 @@ import { PhotoPopup } from "./PhotoPopup";
 import { SatelliteMap } from "./SatelliteMap";
 import type { MapSegment, Timeline } from "./types";
 import timelineJson from "./timeline.json";
+import timelineWideJson from "./timeline-wide.json";
 
 export const TIMELINE = timelineJson as unknown as Timeline;
+export const TIMELINE_WIDE = timelineWideJson as unknown as Timeline;
 
 /** Frames the incoming segment overlaps the previous one (crossfade). */
 const FADE_FRAMES = 12;
@@ -110,9 +112,8 @@ const SetupScreen: React.FC = () => (
   </AbsoluteFill>
 );
 
-export const MapReel: React.FC = () => {
+const MapReelBase: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
   const { fps } = useVideoConfig();
-  const timeline = TIMELINE;
 
   if (timeline.segments.length === 0) {
     return <SetupScreen />;
@@ -166,3 +167,11 @@ export const MapReel: React.FC = () => {
     </AbsoluteFill>
   );
 };
+
+/** 9:16 vertical reel (timeline.json) */
+export const MapReel: React.FC = () => <MapReelBase timeline={TIMELINE} />;
+
+/** 16:9 landscape (timeline-wide.json) */
+export const MapReelWide: React.FC = () => (
+  <MapReelBase timeline={TIMELINE_WIDE} />
+);

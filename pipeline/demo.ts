@@ -9,17 +9,16 @@ import * as path from "path";
 import { latToWorldY, lonToWorldX, Ring } from "../src/mapreel/geo";
 import type { PhotoCue } from "../src/mapreel/types";
 import type { PlaceHit } from "./analyze";
+import { parseAspects } from "./aspects";
 import { enumerateTiles } from "./assets";
 import { buildTimeline, placesToSegments } from "./timeline";
 import type { Word } from "./transcribe";
-import { ensureDir } from "./util";
+import { ensureDir, parseArgs } from "./util";
 
 const ROOT = process.cwd();
 const PUBLIC_DIR = path.join(ROOT, "public", "mapreel");
-const TIMELINE_PATH = path.join(ROOT, "src", "mapreel", "timeline.json");
+const TIMELINE_DIR = path.join(ROOT, "src", "mapreel");
 
-const WIDTH = 1080;
-const HEIGHT = 1920;
 const FPS = 30;
 
 // ── Fictional geography ───────────────────────────────────────────────────────
@@ -183,6 +182,8 @@ const makeWords = (): Word[] => {
 // ── Build everything ──────────────────────────────────────────────────────────
 
 const main = (): void => {
+  const args = parseArgs(process.argv.slice(2));
+  const aspects = parseAspects(args.aspect);
   const words = makeWords();
   const durationSec = words[words.length - 1].endSec + 2.5;
 
@@ -209,18 +210,28 @@ const main = (): void => {
     },
   ];
 
-  const segments = placesToSegments(places, durationSec, WIDTH, HEIGHT);
-
   console.log("Generating procedural satellite tiles...");
-  const tileCfg = { width: WIDTH, height: HEIGHT, fps: FPS, minZoom: 2, maxZoom: 9 };
-  const tiles = enumerateTiles(segments, tileCfg);
   const tilesDir = path.join(PUBLIC_DIR, "tiles");
-  for (const t of tiles) {
-    const dir = path.join(tilesDir, String(t.z), String(t.x));
-    ensureDir(dir);
-    fs.writeFileSync(path.join(dir, `${t.y}.svg`), renderTileSvg(t.z, t.x, t.y));
+  const segmentsByAspect = aspects.map((aspect) => ({
+    aspect,
+    segments: placesToSegments(places, durationSec, aspect.width, aspect.height),
+  }));
+  for (const { aspect, segments } of segmentsByAspect) {
+    const tileCfg = {
+      width: aspect.width,
+      height: aspect.height,
+      fps: FPS,
+      minZoom: 2,
+      maxZoom: 9,
+    };
+    const tiles = enumerateTiles(segments, tileCfg);
+    for (const t of tiles) {
+      const dir = path.join(tilesDir, String(t.z), String(t.x));
+      ensureDir(dir);
+      fs.writeFileSync(path.join(dir, `${t.y}.svg`), renderTileSvg(t.z, t.x, t.y));
+    }
+    console.log(`  ${aspect.name}: wrote ${tiles.length} tiles`);
   }
-  console.log(`  wrote ${tiles.length} tiles`);
 
   console.log("Generating placeholder photos...");
   const photosDir = path.join(PUBLIC_DIR, "photos");
@@ -245,21 +256,23 @@ const main = (): void => {
     side = side === "left" ? "right" : "left";
   }
 
-  const timeline = buildTimeline(words, segments, photoCues, {
-    fps: FPS,
-    width: WIDTH,
-    height: HEIGHT,
-    durationSec,
-    audioSrc: null,
-    tileTemplate: "mapreel/tiles/{z}/{x}/{y}.svg",
-    tileMinZoom: tileCfg.minZoom,
-    tileMaxZoom: tileCfg.maxZoom,
-    credits: ["Demo mode — all map imagery procedurally generated"],
-  });
-
-  fs.writeFileSync(TIMELINE_PATH, JSON.stringify(timeline, null, 2));
-  console.log(`Wrote ${path.relative(ROOT, TIMELINE_PATH)}`);
-  console.log("Preview with `npm start` (MapReel) or render `npm run reel:render`.");
+  for (const { aspect, segments } of segmentsByAspect) {
+    const timeline = buildTimeline(words, segments, photoCues, {
+      fps: FPS,
+      width: aspect.width,
+      height: aspect.height,
+      durationSec,
+      audioSrc: null,
+      tileTemplate: "mapreel/tiles/{z}/{x}/{y}.svg",
+      tileMinZoom: 2,
+      tileMaxZoom: 9,
+      credits: ["Demo mode — all map imagery procedurally generated"],
+    });
+    const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
+    fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));
+    console.log(`Wrote ${path.relative(ROOT, timelinePath)} (${aspect.compositionId})`);
+  }
+  console.log("Preview with `npm start`, render `npm run reel:render` / `npm run reel:render:wide`.");
 };
 
 main();

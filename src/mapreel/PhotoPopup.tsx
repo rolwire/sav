@@ -31,6 +31,8 @@ export const PhotoPopup: React.FC<{ cue: PhotoCue; index: number }> = ({
   const x = cue.side === "left" ? width * 0.28 : width * 0.72;
   const y = height * 0.26;
   const drift = interpolate(frame, [0, durFrames], [0, -18]);
+  // Size off the short edge so photos fit both 9:16 and 16:9 frames.
+  const photoW = Math.min(width, height) * 0.45;
 
   return (
     <div
@@ -50,8 +52,8 @@ export const PhotoPopup: React.FC<{ cue: PhotoCue; index: number }> = ({
       <Img
         src={staticFile(cue.src)}
         style={{
-          width: width * 0.42,
-          height: width * 0.42 * 0.75,
+          width: photoW,
+          height: photoW * 0.75,
           objectFit: "cover",
           borderRadius: 3,
           display: "block",

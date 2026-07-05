@@ -1,0 +1,14 @@
+{
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "durationInFrames": 240,
+  "audioSrc": null,
+  "tileTemplate": null,
+  "tileMinZoom": 2,
+  "tileMaxZoom": 7,
+  "segments": [],
+  "photos": [],
+  "captions": [],
+  "credits": []
+}
