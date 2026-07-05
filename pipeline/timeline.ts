@@ -52,6 +52,7 @@ export const placesToSegments = (
         zoomEnd,
       },
       rings: place.rings,
+      flagSrc: place.flagSrc,
     });
     if (segments.length >= 2) {
       segments[segments.length - 2].endSec = start;

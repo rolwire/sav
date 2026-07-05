@@ -11,6 +11,7 @@
  *   --model <name>       Whisper model (default base.en; try medium.en for accuracy)
  *   --max-photos <n>     Max keyword photos (default 8)
  *   --no-photos          Skip photo fetching
+ *   --no-flags           Countries get the hatch highlight instead of their flag
  *   --aspect <a>         9:16 (default), 16:9, or both
  *
  * Then render with: npm run reel:render (9:16) / npm run reel:render:wide (16:9)
@@ -19,6 +20,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { extractPlaces, pickPhotoKeywords } from "./analyze";
 import { parseAspects } from "./aspects";
+import { attachFlags } from "./flags";
 import { downloadTiles, fetchPhotos, photosToCues } from "./assets";
 import { buildTimeline, placesToSegments } from "./timeline";
 import { audioDurationSec, loadTranscript, transcribeVO, Word } from "./transcribe";
@@ -72,6 +74,9 @@ const main = async (): Promise<void> => {
       "No places found in the VO. Name places explicitly, or pass --places \"Egypt, Nile\""
     );
     process.exit(1);
+  }
+  if (!args["no-flags"]) {
+    attachFlags(places, PUBLIC_DIR);
   }
   const aspects = parseAspects(args.aspect);
   const segmentsByAspect = aspects.map((a) => ({

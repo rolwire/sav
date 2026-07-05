@@ -8,6 +8,10 @@ export interface PlaceHit {
   mentionSec: number;
   bbox: [number, number, number, number]; // minLon, minLat, maxLon, maxLat
   rings: Ring[];
+  /** ISO 3166-1 alpha-2, set when the place is a country (for flag painting) */
+  countryCode?: string;
+  /** staticFile-relative flag image, filled in by the flag step */
+  flagSrc?: string;
 }
 
 export interface PhotoKeyword {
@@ -103,6 +107,7 @@ interface NominatimResult {
   };
   addresstype?: string;
   class?: string;
+  address?: { country_code?: string };
 }
 
 /** Ramer–Douglas–Peucker line simplification. */
@@ -246,6 +251,7 @@ export const extractPlaces = async (
         limit: "1",
         polygon_geojson: "1",
         polygon_threshold: "0.002",
+        addressdetails: "1",
       }).toString();
 
     let results: NominatimResult[];
@@ -282,6 +288,8 @@ export const extractPlaces = async (
       mentionSec: cand.startSec,
       bbox,
       rings,
+      countryCode:
+        type === "country" ? r.address?.country_code?.toLowerCase() : undefined,
     });
   }
 

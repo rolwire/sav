@@ -48,7 +48,11 @@ const TileLayer: React.FC<{
   return <AbsoluteFill style={{ opacity }}>{tiles}</AbsoluteFill>;
 };
 
-/** GeoBites-style highlight: animated border draw-on + diagonal hatch fill. */
+/**
+ * GeoBites-style highlight: animated border draw-on, then a fill that is
+ * either a diagonal hatch (default) or the country's flag painted inside
+ * the border (when segment.flagSrc is set).
+ */
 const HighlightPolygon: React.FC<{
   cam: Camera;
   segment: MapSegment;
@@ -57,11 +61,19 @@ const HighlightPolygon: React.FC<{
 }> = ({ cam, segment, tSec, patternId }) => {
   const { width, height } = useVideoConfig();
 
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   const paths = segment.rings.map((ring) => {
     return (
       ring
         .map((pt, i) => {
           const p = project(cam, width, height, pt[0], pt[1]);
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
           return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
         })
         .join("") + "Z"
@@ -69,12 +81,12 @@ const HighlightPolygon: React.FC<{
   });
   const d = paths.join(" ");
 
-  // Border draws on between 0.7s and 2.1s, fill fades in right behind it.
+  // Border draws on between 0.7s and 2.1s, fill paints in right behind it.
   const draw = interpolate(tSec, [0.7, 2.1], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const fillOpacity = interpolate(tSec, [1.2, 2.4], [0, 1], {
+  const fillOpacity = interpolate(tSec, [1.2, 2.6], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -93,13 +105,29 @@ const HighlightPolygon: React.FC<{
             <rect width={26} height={26} fill="rgba(64, 224, 255, 0.18)" />
             <rect width={11} height={26} fill="rgba(64, 224, 255, 0.42)" />
           </pattern>
+          <clipPath id={`clip-${patternId}`}>
+            <path d={d} />
+          </clipPath>
         </defs>
-        <path
-          d={d}
-          fill={`url(#${patternId})`}
-          opacity={fillOpacity}
-          stroke="none"
-        />
+        {segment.flagSrc ? (
+          <g clipPath={`url(#clip-${patternId})`} opacity={fillOpacity * 0.88}>
+            <image
+              href={staticFile(segment.flagSrc)}
+              x={minX}
+              y={minY}
+              width={Math.max(1, maxX - minX)}
+              height={Math.max(1, maxY - minY)}
+              preserveAspectRatio="xMidYMid slice"
+            />
+          </g>
+        ) : (
+          <path
+            d={d}
+            fill={`url(#${patternId})`}
+            opacity={fillOpacity}
+            stroke="none"
+          />
+        )}
         <path
           d={d}
           fill="none"

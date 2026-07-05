@@ -10,9 +10,12 @@ Two compositions live in this repo:
 # Map Reel — automated map-animation pipeline
 
 Drop in a voiceover; get back a vertical (1080×1920) reel where a satellite
-map flies between every place you mention, highlights it GeoBites-style
-(glowing border draw-on + cyan hatch fill), pops up real photos from public
-libraries when keywords are spoken, and shows word-synced captions.
+map flies between every place you mention, highlights it GeoBites-style —
+the border draws itself on, then **countries are painted with their real
+flag** (other places get a cyan hatch fill) — pops up real photos from
+public libraries when keywords are spoken, and shows word-synced captions.
+Flags come from the bundled `flag-icons` package (offline, all countries);
+pass `--no-flags` to use the hatch everywhere.
 
 ## One command
 
@@ -48,13 +51,15 @@ npm run reel:render:wide     # 16:9  -> out/mapreel-wide.mp4 (MapReelWide)
 --model medium.en     # whisper model (default base.en)
 --max-photos 8        # cap keyword photos
 --no-photos           # maps only
+--no-flags            # hatch highlight for countries instead of their flag
 --aspect both         # 9:16 (default), 16:9, or both
 ```
 
 ## Offline demo (no VO, no network)
 
 ```bash
-npm run reel:demo     # procedurally generated islands + placeholder photos
+npm run reel:demo     # real Nigeria + Ghana borders (Natural Earth) with
+                      # real flags; only the satellite look is procedural
 npm start             # preview the MapReel composition in Remotion Studio
 npm run reel:render
 ```

@@ -8,6 +8,12 @@ export interface MapSegment {
   camera: SegmentCamera;
   /** Simplified polygon outer rings in lon/lat */
   rings: Ring[];
+  /**
+   * staticFile-relative flag image (e.g. "mapreel/flags/ng.svg").
+   * When set, the highlight paints the flag inside the border instead of
+   * the default hatch fill.
+   */
+  flagSrc?: string;
 }
 
 export interface PhotoCue {

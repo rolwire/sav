@@ -1,16 +1,29 @@
 /**
- * Offline demo: builds a complete Map Reel timeline with procedurally
- * generated "satellite" tiles and placeholder photos — no network, no VO
- * needed. Lets you preview the whole composition before running the real
- * pipeline:  npm run reel:demo  then  npm start
+ * Offline demo: builds a complete Map Reel timeline with REAL country
+ * borders (Natural Earth 110m via the world-atlas package) and REAL flags
+ * (flag-icons package) — no network and no VO needed. Only the "satellite"
+ * tiles are procedurally colored (real imagery can't be bundled offline).
+ *
+ *   npm run reel:demo                 # Nigeria → Ghana showcase, 9:16
+ *   npm run reel:demo -- --aspect both
  */
 import * as fs from "fs";
 import * as path from "path";
-import { latToWorldY, lonToWorldX, Ring } from "../src/mapreel/geo";
+import { feature } from "topojson-client";
+import type {
+  Feature,
+  FeatureCollection,
+  Geometry,
+  MultiPolygon,
+  Polygon,
+} from "geojson";
+import type { Topology } from "topojson-specification";
+import type { Ring } from "../src/mapreel/geo";
 import type { PhotoCue } from "../src/mapreel/types";
 import type { PlaceHit } from "./analyze";
 import { parseAspects } from "./aspects";
 import { enumerateTiles } from "./assets";
+import { attachFlags } from "./flags";
 import { buildTimeline, placesToSegments } from "./timeline";
 import type { Word } from "./transcribe";
 import { ensureDir, parseArgs } from "./util";
@@ -21,85 +34,89 @@ const TIMELINE_DIR = path.join(ROOT, "src", "mapreel");
 
 const FPS = 30;
 
-// ── Fictional geography ───────────────────────────────────────────────────────
-// Islands defined in world (mercator) coordinates. The same wobble function
-// shapes both the land in the tiles and the highlight polygon, so they match.
+// ── Real country geometry (Natural Earth 110m) ───────────────────────────────
 
-interface Blob {
-  cx: number; // world x
-  cy: number; // world y
-  rx: number;
-  ry: number;
-  wobbleAmp: number;
-  wobbleFreq: number;
-  phase: number;
+interface CountryShape {
+  name: string;
+  rings: Ring[]; // all rings incl. holes, even-odd tested
+  bbox: [number, number, number, number];
 }
 
-const ISLA_VERDE: Blob = {
-  cx: lonToWorldX(-30),
-  cy: latToWorldY(21),
-  rx: 1.4 / 360,
-  ry: 1.1 / 360,
-  wobbleAmp: 0.3,
-  wobbleFreq: 5,
-  phase: 1.3,
-};
+const loadCountries = (): CountryShape[] => {
+  const topo = JSON.parse(
+    fs.readFileSync(
+      path.join(ROOT, "node_modules", "world-atlas", "countries-110m.json"),
+      "utf8"
+    )
+  ) as Topology;
+  const fc = feature(
+    topo,
+    topo.objects.countries
+  ) as unknown as FeatureCollection<Geometry, { name: string }>;
 
-const BAHIA_AZUL: Blob = {
-  cx: lonToWorldX(-27.6),
-  cy: latToWorldY(19.4),
-  rx: 0.75 / 360,
-  ry: 0.6 / 360,
-  wobbleAmp: 0.35,
-  wobbleFreq: 4,
-  phase: 4.1,
-};
+  const shapes: CountryShape[] = [];
+  for (const f of fc.features as Feature<Geometry, { name: string }>[]) {
+    const geom = f.geometry;
+    if (!geom) continue;
+    let polys: number[][][][] = [];
+    if (geom.type === "Polygon") polys = [(geom as Polygon).coordinates as number[][][]];
+    else if (geom.type === "MultiPolygon")
+      polys = (geom as MultiPolygon).coordinates as number[][][][];
+    else continue;
 
-// Background landmasses so wide shots aren't empty ocean.
-const SCENERY: Blob[] = [
-  { cx: lonToWorldX(-52), cy: latToWorldY(34), rx: 0.018, ry: 0.014, wobbleAmp: 0.4, wobbleFreq: 3, phase: 0.7 },
-  { cx: lonToWorldX(-9), cy: latToWorldY(9), rx: 0.016, ry: 0.02, wobbleAmp: 0.35, wobbleFreq: 4, phase: 2.9 },
-  { cx: lonToWorldX(-40), cy: latToWorldY(2), rx: 0.012, ry: 0.012, wobbleAmp: 0.45, wobbleFreq: 5, phase: 5.2 },
-];
-
-const ALL_BLOBS = [ISLA_VERDE, BAHIA_AZUL, ...SCENERY];
-
-const edgeR = (b: Blob, ang: number): number =>
-  1 + b.wobbleAmp * Math.sin(b.wobbleFreq * ang + b.phase);
-
-const insideBlob = (b: Blob, wx: number, wy: number, scale = 1): boolean => {
-  const dx = (wx - b.cx) / b.rx;
-  const dy = (wy - b.cy) / b.ry;
-  const r = Math.hypot(dx, dy);
-  return r < edgeR(b, Math.atan2(dy, dx)) * scale;
-};
-
-const worldYToLat = (wy: number): number =>
-  (Math.asin(Math.tanh(2 * Math.PI * (0.5 - wy))) * 180) / Math.PI;
-
-const blobRing = (b: Blob, points = 72): Ring => {
-  const ring: Ring = [];
-  for (let i = 0; i <= points; i++) {
-    const ang = (i / points) * 2 * Math.PI;
-    const r = edgeR(b, ang);
-    const wx = b.cx + b.rx * r * Math.cos(ang);
-    const wy = b.cy + b.ry * r * Math.sin(ang);
-    ring.push([wx * 360 - 180, worldYToLat(wy)]);
+    const rings: Ring[] = [];
+    let minLon = Infinity;
+    let minLat = Infinity;
+    let maxLon = -Infinity;
+    let maxLat = -Infinity;
+    for (const poly of polys) {
+      for (const ring of poly) {
+        rings.push(ring as Ring);
+        for (const [lon, lat] of ring) {
+          if (lon < minLon) minLon = lon;
+          if (lat < minLat) minLat = lat;
+          if (lon > maxLon) maxLon = lon;
+          if (lat > maxLat) maxLat = lat;
+        }
+      }
+    }
+    shapes.push({
+      name: f.properties?.name ?? "?",
+      rings,
+      bbox: [minLon, minLat, maxLon, maxLat],
+    });
   }
-  return ring;
+  return shapes;
 };
 
-const blobBbox = (b: Blob): [number, number, number, number] => {
-  const m = 1 + b.wobbleAmp;
-  return [
-    (b.cx - b.rx * m) * 360 - 180,
-    worldYToLat(b.cy + b.ry * m),
-    (b.cx + b.rx * m) * 360 - 180,
-    worldYToLat(b.cy - b.ry * m),
-  ];
+const inRing = (ring: Ring, lon: number, lat: number): boolean => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (
+      yi > lat !== yj > lat &&
+      lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
 };
 
-// ── Procedural tile rendering ────────────────────────────────────────────────
+const inCountry = (c: CountryShape, lon: number, lat: number): boolean => {
+  if (lon < c.bbox[0] || lon > c.bbox[2] || lat < c.bbox[1] || lat > c.bbox[3]) {
+    return false;
+  }
+  // Even-odd across all rings handles holes (e.g. Lesotho in South Africa).
+  let inside = false;
+  for (const ring of c.rings) {
+    if (inRing(ring, lon, lat)) inside = !inside;
+  }
+  return inside;
+};
+
+// ── Procedural tile coloring over real coastlines ────────────────────────────
 
 const hash = (a: number, b: number, c: number, d: number): number => {
   let h = (a * 374761393 + b * 668265263 + c * 2147483647 + d * 144665) | 0;
@@ -107,71 +124,97 @@ const hash = (a: number, b: number, c: number, d: number): number => {
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 };
 
+const worldYToLat = (wy: number): number =>
+  (Math.asin(Math.tanh(2 * Math.PI * (0.5 - wy))) * 180) / Math.PI;
+
 const GRID = 16;
 const CELL = 256 / GRID;
 
-const renderTileSvg = (z: number, x: number, y: number): string => {
-  const n = Math.pow(2, z);
-  const rects: string[] = [];
-  for (let i = 0; i < GRID; i++) {
-    for (let j = 0; j < GRID; j++) {
-      const wx = (x + (i + 0.5) / GRID) / n;
-      const wy = (y + (j + 0.5) / GRID) / n;
-      const land = ALL_BLOBS.some((b) => insideBlob(b, wx, wy));
-      const shallow = !land && ALL_BLOBS.some((b) => insideBlob(b, wx, wy, 1.25));
-      const h = hash(z, x * GRID + i, y * GRID + j, 7);
-      let fill: string | null = null;
-      if (land) {
-        const g = 96 + Math.floor(h * 40);
-        fill = `rgb(${58 + Math.floor(h * 25)},${g},${52})`;
-      } else if (shallow) {
-        fill = `rgb(23,${88 + Math.floor(h * 20)},${118 + Math.floor(h * 18)})`;
-      } else if (h > 0.86) {
-        fill = "rgba(255,255,255,0.03)"; // faint ocean texture
-      }
-      if (fill) {
-        rects.push(
-          `<rect x="${i * CELL}" y="${j * CELL}" width="${CELL}" height="${CELL}" fill="${fill}"/>`
-        );
+const makeTileRenderer = (countries: CountryShape[]) => {
+  const isLand = (lon: number, lat: number): boolean =>
+    countries.some((c) => inCountry(c, lon, lat));
+
+  return (z: number, x: number, y: number): string => {
+    const n = Math.pow(2, z);
+    const rects: string[] = [];
+    for (let i = 0; i < GRID; i++) {
+      for (let j = 0; j < GRID; j++) {
+        const wx = (x + (i + 0.5) / GRID) / n;
+        const wy = (y + (j + 0.5) / GRID) / n;
+        const lon = wx * 360 - 180;
+        const lat = worldYToLat(wy);
+        const land = isLand(lon, lat);
+        const h = hash(z, x * GRID + i, y * GRID + j, 7);
+        let fill: string | null = null;
+        if (land) {
+          // Rough Sahara band gets a sandy palette; everything else green.
+          const sandy = lat > 16 && lat < 31 && lon > -16 && lon < 36;
+          if (sandy) {
+            fill = `rgb(${188 + Math.floor(h * 30)},${160 + Math.floor(h * 26)},${104 + Math.floor(h * 22)})`;
+          } else {
+            const g = 96 + Math.floor(h * 40);
+            fill = `rgb(${58 + Math.floor(h * 25)},${g},${52})`;
+          }
+        } else {
+          // Shallow-water rim: any close neighbor sample on land?
+          const d = 0.35 / n * 360 / GRID;
+          const shallow =
+            isLand(lon + d, lat) ||
+            isLand(lon - d, lat) ||
+            isLand(lon, lat + d) ||
+            isLand(lon, lat - d);
+          if (shallow) {
+            fill = `rgb(23,${88 + Math.floor(h * 20)},${118 + Math.floor(h * 18)})`;
+          } else if (h > 0.86) {
+            fill = "rgba(255,255,255,0.03)";
+          }
+        }
+        if (fill) {
+          rects.push(
+            `<rect x="${i * CELL}" y="${j * CELL}" width="${CELL}" height="${CELL}" fill="${fill}"/>`
+          );
+        }
       }
     }
-  }
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">` +
-    `<rect width="256" height="256" fill="#0b3550"/>` +
-    rects.join("") +
-    `</svg>`
-  );
+    return (
+      `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">` +
+      `<rect width="256" height="256" fill="#0b3550"/>` +
+      rects.join("") +
+      `</svg>`
+    );
+  };
 };
 
+// ── Placeholder photos ────────────────────────────────────────────────────────
+
 const PHOTO_SVGS: Record<string, string> = {
-  volcano:
-    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#ffd9a0"/>` +
-    `<circle cx="640" cy="120" r="70" fill="#ff9e45"/><polygon points="150,600 400,180 650,600" fill="#5a4636"/>` +
-    `<polygon points="330,300 400,180 470,300 430,270 400,300 370,270" fill="#e05a33"/></svg>`,
-  lighthouse:
-    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#bfe3f0"/>` +
-    `<rect y="440" width="800" height="160" fill="#2a6f8e"/><polygon points="360,440 440,440 425,160 375,160" fill="#e8e4da"/>` +
-    `<rect x="368" y="250" width="64" height="40" fill="#c33"/><rect x="380" y="120" width="40" height="45" fill="#ffe08a"/>` +
-    `<polygon points="370,120 430,120 400,85" fill="#444"/></svg>`,
-  "fishing boats":
-    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#9fd4e8"/>` +
-    `<rect y="380" width="800" height="220" fill="#1f6d94"/><path d="M200,420 L390,420 L360,480 L230,480 Z" fill="#7a4b2a"/>` +
-    `<rect x="288" y="300" width="12" height="122" fill="#5a3a20"/><polygon points="300,305 300,405 380,405" fill="#f3ecd9"/>` +
-    `<path d="M480,440 L640,440 L615,488 L505,488 Z" fill="#8a5a35"/></svg>`,
+  markets:
+    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#f6e3c1"/>` +
+    `<rect x="120" y="260" width="560" height="240" fill="#b06a2d"/><polygon points="80,260 720,260 660,150 140,150" fill="#d64545"/>` +
+    `<rect x="180" y="330" width="90" height="80" fill="#f2b134"/><rect x="320" y="330" width="90" height="80" fill="#7fb069"/>` +
+    `<rect x="460" y="330" width="90" height="80" fill="#e2793f"/></svg>`,
+  music:
+    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#2d2a4a"/>` +
+    `<circle cx="300" cy="420" r="46" fill="#f2b134"/><rect x="338" y="180" width="16" height="240" fill="#f2b134"/>` +
+    `<polygon points="338,180 460,150 460,200 354,228" fill="#f2b134"/><circle cx="560" cy="300" r="90" fill="#d64545"/>` +
+    `<circle cx="560" cy="300" r="60" fill="#8a2f2f"/></svg>`,
+  cocoa:
+    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#dff0d8"/>` +
+    `<ellipse cx="400" cy="330" rx="150" ry="220" fill="#8a5a2d"/><ellipse cx="400" cy="330" rx="150" ry="220" fill="none" stroke="#6b4420" stroke-width="14"/>` +
+    `<path d="M330,140 Q400,60 470,140" stroke="#4a7a3a" stroke-width="18" fill="none"/></svg>`,
 };
 
 // ── Fixture narration ─────────────────────────────────────────────────────────
 
 const NARRATION =
-  "Hidden deep in the mid Atlantic lies Isla Verde. A volcanic island ringed " +
-  "by turquoise reefs and black sand beaches. Just to the south sits tiny " +
-  "Bahia Azul. Its old lighthouse has guided fishing boats home for over two " +
-  "hundred years.";
+  "West Africa is home to giants. Nigeria alone holds over two hundred " +
+  "million people, its cities alive with music and busy markets. Just west " +
+  "along the coast lies Ghana, a nation famous for golden beaches and rich " +
+  "cocoa farms.";
 
 const makeWords = (): Word[] => {
   const parts = NARRATION.split(/\s+/);
-  const step = 0.34;
+  const step = 0.36;
   return parts.map((text, i) => ({
     text,
     startSec: 0.4 + i * step,
@@ -187,30 +230,35 @@ const main = (): void => {
   const words = makeWords();
   const durationSec = words[words.length - 1].endSec + 2.5;
 
+  console.log("Loading Natural Earth country boundaries...");
+  const countries = loadCountries();
+
   const findMention = (name: string): number => {
-    const first = name.split(/\s+/)[0].toLowerCase();
-    const w = words.find((x) => x.text.toLowerCase().startsWith(first));
+    const w = words.find((x) => x.text.toLowerCase().startsWith(name.toLowerCase()));
     return w ? w.startSec : 0;
   };
 
-  const places: PlaceHit[] = [
-    {
-      name: "Isla Verde",
-      displayName: "Isla Verde (demo)",
-      mentionSec: findMention("Isla"),
-      bbox: blobBbox(ISLA_VERDE),
-      rings: [blobRing(ISLA_VERDE)],
-    },
-    {
-      name: "Bahia Azul",
-      displayName: "Bahia Azul (demo)",
-      mentionSec: findMention("Bahia"),
-      bbox: blobBbox(BAHIA_AZUL),
-      rings: [blobRing(BAHIA_AZUL)],
-    },
-  ];
+  const demoCountry = (name: string, countryCode: string): PlaceHit => {
+    const shape = countries.find((c) => c.name === name);
+    if (!shape) throw new Error(`Country "${name}" not found in Natural Earth data`);
+    return {
+      name,
+      displayName: `${name} (Natural Earth 110m)`,
+      mentionSec: findMention(name),
+      bbox: shape.bbox,
+      rings: shape.rings,
+      countryCode,
+    };
+  };
 
-  console.log("Generating procedural satellite tiles...");
+  const places: PlaceHit[] = [
+    demoCountry("Nigeria", "ng"),
+    demoCountry("Ghana", "gh"),
+  ];
+  attachFlags(places, PUBLIC_DIR);
+
+  console.log("Generating procedural satellite tiles over real coastlines...");
+  const renderTileSvg = makeTileRenderer(countries);
   const tilesDir = path.join(PUBLIC_DIR, "tiles");
   const segmentsByAspect = aspects.map((aspect) => ({
     aspect,
@@ -242,7 +290,7 @@ const main = (): void => {
     const file = `${keyword.replace(/\s+/g, "-")}.svg`;
     fs.writeFileSync(path.join(photosDir, file), svg);
     const w = words.find((x) =>
-      x.text.toLowerCase().startsWith(keyword.split(/\s+/)[0].slice(0, 6))
+      x.text.toLowerCase().startsWith(keyword.slice(0, 5))
     );
     if (!w) continue;
     photoCues.push({
@@ -266,7 +314,9 @@ const main = (): void => {
       tileTemplate: "mapreel/tiles/{z}/{x}/{y}.svg",
       tileMinZoom: 2,
       tileMaxZoom: 9,
-      credits: ["Demo mode — all map imagery procedurally generated"],
+      credits: [
+        "Demo mode — borders: Natural Earth · flags: flag-icons · imagery: procedural",
+      ],
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

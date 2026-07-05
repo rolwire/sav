@@ -31,11 +31,15 @@ export const enumerateTiles = (
   cfg: TileConfig
 ): TileId[] => {
   const set = new Set<string>();
-  const sampleStepSec = 4 / cfg.fps;
 
   for (const seg of segments) {
     const dur = seg.endSec - seg.startSec;
-    for (let t = 0; t <= dur + sampleStepSec; t += sampleStepSec) {
+    // Sample at every frame — the exact time grid the renderer evaluates.
+    // Coarser sampling can miss tiles: the eased zoom moves fastest at the
+    // start of a segment and can cross a layer threshold between samples.
+    const frames = Math.ceil(dur * cfg.fps) + 1;
+    for (let f = 0; f <= frames; f++) {
+      const t = f / cfg.fps;
       const cam = cameraAtTime(seg.camera, Math.min(t, dur), dur);
       for (const layer of layersForZoom(cam.zoom, cfg.minZoom, cfg.maxZoom)) {
         const range = visibleTiles(cam, cfg.width, cfg.height, layer.z, 96);
