@@ -99,6 +99,51 @@ const synthDing = (): Float32Array => {
   return out;
 };
 
+/**
+ * Gentle ambient music bed: slow-attack sine-stack pads walking through a
+ * i–VI–III–VII progression (A minor), low-passed and quiet. Good enough for
+ * demos and as a fallback when no --music track is provided.
+ */
+const synthAmbientPad = (durSec: number): Float32Array => {
+  const n = Math.floor(durSec * SAMPLE_RATE);
+  const out = new Float32Array(n);
+  // Chord roots in Hz (A2, F2, C3, G2), each chord = root + fifth + octave + third
+  const chords = [
+    [110.0, 164.81, 220.0, 261.63],
+    [87.31, 130.81, 174.61, 220.0],
+    [130.81, 196.0, 261.63, 329.63],
+    [98.0, 146.83, 196.0, 246.94],
+  ];
+  const chordDur = 4; // seconds per chord
+  for (let i = 0; i < n; i++) {
+    const t = i / SAMPLE_RATE;
+    const idx = Math.floor(t / chordDur) % chords.length;
+    const tin = (t % chordDur) / chordDur;
+    // Crossfade between chords so changes breathe instead of clicking.
+    const env = Math.sin(Math.PI * Math.min(1, Math.max(0, tin))) * 0.8 + 0.2;
+    let v = 0;
+    for (const [k, f] of chords[idx].entries()) {
+      v +=
+        Math.sin(2 * Math.PI * f * t) *
+        (0.3 - k * 0.05) *
+        (1 + 0.12 * Math.sin(2 * Math.PI * 0.13 * t + k));
+    }
+    // Master fade in/out at the ends of the bed
+    const master =
+      Math.min(1, t / 2) * Math.min(1, Math.max(0, (durSec - t) / 2.5));
+    out[i] = v * env * master * 0.35;
+  }
+  return out;
+};
+
+/** Write a demo/fallback music bed WAV; returns its staticFile path. */
+export const ensureDemoMusic = (publicDir: string, durSec: number): string => {
+  const dir = path.join(publicDir, "sfx");
+  ensureDir(dir);
+  writeWav(path.join(dir, "music.wav"), synthAmbientPad(durSec));
+  return "mapreel/sfx/music.wav";
+};
+
 export interface SfxPaths {
   whoosh: string;
   pop: string;

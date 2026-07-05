@@ -4,6 +4,7 @@
   "height": 1920,
   "durationInFrames": 240,
   "audioSrc": null,
+  "musicSrc": null,
   "tileTemplate": null,
   "tileMinZoom": 2,
   "tileMaxZoom": 7,

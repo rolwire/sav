@@ -1,6 +1,6 @@
 import type { LonLat, Ring, SegmentCamera } from "./geo";
 
-export type HighlightStyle = "flag" | "hatch" | "neon";
+export type HighlightStyle = "flag" | "hatch" | "neon" | "solid";
 
 /** GeoSolved-style animated distance ruler drawn across a segment's place. */
 export interface RulerAnnotation {
@@ -12,6 +12,18 @@ export interface RulerAnnotation {
   labelMi: string;
   labelKm: string;
 }
+
+/** Animated connection line a→b with a pulsing circle at the target. */
+export interface LinkAnnotation {
+  type: "link";
+  a: LonLat;
+  b: LonLat;
+  /** seconds after the segment starts */
+  startOffsetSec: number;
+  durationSec: number;
+}
+
+export type Annotation = RulerAnnotation | LinkAnnotation;
 
 /** A one-shot sound effect cue. */
 export interface SfxCue {
@@ -35,10 +47,10 @@ export interface MapSegment {
    * the default hatch fill.
    */
   flagSrc?: string;
-  /** How to fill the highlight: "flag", "hatch" (default), or "neon" —
-   *  glowing outline that dims the world outside the border. */
+  /** How to fill the highlight: "flag", "hatch" (default), "solid" (bright
+   *  cyan fill), or "neon" — glowing outline that dims the world outside. */
   highlightStyle?: HighlightStyle;
-  annotations?: RulerAnnotation[];
+  annotations?: Annotation[];
 }
 
 export interface PhotoCue {
@@ -70,6 +82,8 @@ export interface Timeline {
   durationInFrames: number;
   /** staticFile-relative audio path, or null for silent preview */
   audioSrc: string | null;
+  /** staticFile-relative background music, auto-ducked under the VO */
+  musicSrc?: string | null;
   /** e.g. "mapreel/tiles/{z}/{x}/{y}.png", or null when no tiles present */
   tileTemplate: string | null;
   tileMinZoom: number;

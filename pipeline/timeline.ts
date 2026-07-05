@@ -22,11 +22,15 @@ export interface TimelineOptions {
   credits?: string[];
   /** When set, whoosh/pop/ding cues are added automatically. */
   sfx?: SfxPaths | null;
+  /** Background music, auto-ducked under the VO by the composition. */
+  musicSrc?: string | null;
 }
 
 export interface SegmentOptions {
   /** Add a GeoSolved-style width ruler to segments long enough to fit one. */
   rulers?: boolean;
+  /** Draw a connection line from the previous place when a segment starts. */
+  links?: boolean;
 }
 
 const RULER_MIN_SEGMENT_SEC = 6;
@@ -97,6 +101,23 @@ export const placesToSegments = (
     }
   }
 
+  if (segOpts.links) {
+    for (let i = 1; i < segments.length; i++) {
+      const prev = segments[i - 1];
+      const cur = segments[i];
+      cur.annotations = [
+        ...(cur.annotations ?? []),
+        {
+          type: "link",
+          a: [prev.camera.lon, prev.camera.lat],
+          b: [cur.camera.lon, cur.camera.lat],
+          startOffsetSec: 0.25,
+          durationSec: 2.4,
+        },
+      ];
+    }
+  }
+
   if (segOpts.rulers) {
     segments.forEach((seg, i) => {
       if (seg.endSec - seg.startSec < RULER_MIN_SEGMENT_SEC) return;
@@ -119,6 +140,7 @@ export const placesToSegments = (
       const { a, b, km } = best;
       const mi = km * 0.621371;
       seg.annotations = [
+        ...(seg.annotations ?? []),
         {
           type: "ruler",
           a,
@@ -209,6 +231,7 @@ export const buildTimeline = (
     height,
     durationInFrames: Math.round(opts.durationSec * fps),
     audioSrc: opts.audioSrc,
+    musicSrc: opts.musicSrc ?? null,
     tileTemplate: opts.tileTemplate,
     tileMinZoom: opts.tileMinZoom ?? 2,
     tileMaxZoom: opts.tileMaxZoom ?? 12,

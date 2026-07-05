@@ -24,7 +24,7 @@ import type { PlaceHit } from "./analyze";
 import { parseAspects } from "./aspects";
 import { enumerateTiles } from "./assets";
 import { attachFlags } from "./flags";
-import { ensureSfx } from "./sfx";
+import { ensureDemoMusic, ensureSfx } from "./sfx";
 import { buildTimeline, placesToSegments } from "./timeline";
 import type { Word } from "./transcribe";
 import { ensureDir, parseArgs } from "./util";
@@ -211,7 +211,7 @@ const NARRATION =
   "West Africa is home to giants. Nigeria alone holds over two hundred " +
   "million people, its cities alive with music and busy markets. Just west " +
   "along the coast lies Ghana, a nation famous for golden beaches and rich " +
-  "cocoa farms.";
+  "cocoa farms. And squeezed right between them sits slim little Benin.";
 
 const makeWords = (): Word[] => {
   const parts = NARRATION.split(/\s+/);
@@ -255,6 +255,7 @@ const main = (): void => {
   const places: PlaceHit[] = [
     demoCountry("Nigeria", "ng"),
     demoCountry("Ghana", "gh"),
+    demoCountry("Benin", "bj"),
   ];
   attachFlags(places, PUBLIC_DIR);
 
@@ -265,11 +266,14 @@ const main = (): void => {
     aspect,
     segments: placesToSegments(places, durationSec, aspect.width, aspect.height, {
       rulers: true,
-    }).map((s) =>
-      // Showcase both looks: Nigeria keeps its flag fill, Ghana gets the
-      // GeoSolved-style neon outline.
-      s.name === "Ghana" ? { ...s, highlightStyle: "neon" as const } : s
-    ),
+      links: true,
+    }).map((s) => {
+      // Showcase every look: Nigeria = flag fill, Ghana = solid cyan,
+      // Benin = neon outline. Links draw between consecutive places.
+      if (s.name === "Ghana") return { ...s, highlightStyle: "solid" as const };
+      if (s.name === "Benin") return { ...s, highlightStyle: "neon" as const };
+      return s;
+    }),
   }));
   for (const { aspect, segments } of segmentsByAspect) {
     const tileCfg = {
@@ -312,6 +316,7 @@ const main = (): void => {
   }
 
   const sfx = ensureSfx(PUBLIC_DIR);
+  const musicSrc = ensureDemoMusic(PUBLIC_DIR, durationSec);
 
   for (const { aspect, segments } of segmentsByAspect) {
     const timeline = buildTimeline(words, segments, photoCues, {
@@ -327,6 +332,7 @@ const main = (): void => {
         "Demo mode — borders: Natural Earth · flags: flag-icons · imagery: procedural",
       ],
       sfx,
+      musicSrc,
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

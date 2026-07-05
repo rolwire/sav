@@ -14,7 +14,9 @@
  *   --no-flags           Countries get the hatch highlight instead of their flag
  *   --no-sfx             Skip whoosh/pop/ding sound effects
  *   --no-ruler           Skip the auto "X miles / Y km" width ruler
- *   --style neon         Neon glowing-outline highlight for every place
+ *   --music <file>       Background music, auto-ducked under the VO
+ *   --links              Draw a connection line from the previous place on each cut
+ *   --style <s>          Highlight style for every place: neon, solid, or hatch
  *   --aspect <a>         9:16 (default), 16:9, or both
  *
  * Then render with: npm run reel:render (9:16) / npm run reel:render:wide (16:9)
@@ -84,13 +86,14 @@ const main = async (): Promise<void> => {
   }
   const aspects = parseAspects(args.aspect);
   const styleOverride =
-    args.style === "neon" || args.style === "hatch"
-      ? (args.style as "neon" | "hatch")
+    args.style === "neon" || args.style === "hatch" || args.style === "solid"
+      ? (args.style as "neon" | "hatch" | "solid")
       : undefined;
   const segmentsByAspect = aspects.map((a) => ({
     aspect: a,
     segments: placesToSegments(places, durationSec, a.width, a.height, {
       rulers: !args["no-ruler"],
+      links: Boolean(args.links),
     }).map((s) => (styleOverride ? { ...s, highlightStyle: styleOverride } : s)),
   }));
   const names = segmentsByAspect[0].segments.map((s) => s.name).join(" → ");
@@ -137,6 +140,18 @@ const main = async (): Promise<void> => {
 
   const sfx = args["no-sfx"] ? null : ensureSfx(PUBLIC_DIR);
 
+  let musicSrc: string | null = null;
+  if (typeof args.music === "string") {
+    if (!fs.existsSync(args.music)) {
+      console.error(`Music file not found: ${args.music}`);
+      process.exit(1);
+    }
+    const dest = path.join(PUBLIC_DIR, `music${path.extname(args.music) || ".mp3"}`);
+    fs.copyFileSync(args.music, dest);
+    musicSrc = `mapreel/${path.basename(dest)}`;
+    console.log(`  music: ${args.music} (ducked under VO)`);
+  }
+
   for (const { aspect, segments } of segmentsByAspect) {
     const timeline = buildTimeline(words, segments, photoCues, {
       fps: FPS,
@@ -149,6 +164,7 @@ const main = async (): Promise<void> => {
       tileMaxZoom,
       credits,
       sfx,
+      musicSrc,
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

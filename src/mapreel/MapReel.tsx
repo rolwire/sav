@@ -112,6 +112,15 @@ const SetupScreen: React.FC = () => (
   </AbsoluteFill>
 );
 
+/** Music bed volume: quiet under speech, a bit louder in the gaps. */
+const makeMusicVolume = (timeline: Timeline) => (frame: number): number => {
+  const tSec = frame / timeline.fps;
+  const speaking = timeline.captions.some(
+    (g) => tSec >= g.startSec - 0.2 && tSec < g.endSec + 0.2
+  );
+  return speaking ? 0.09 : 0.22;
+};
+
 const MapReelBase: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
   const { fps } = useVideoConfig();
 
@@ -125,6 +134,12 @@ const MapReelBase: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: "#06131d" }}>
       {timeline.audioSrc ? <Audio src={staticFile(timeline.audioSrc)} /> : null}
+      {timeline.musicSrc ? (
+        <Audio
+          src={staticFile(timeline.musicSrc)}
+          volume={makeMusicVolume(timeline)}
+        />
+      ) : null}
 
       {timeline.segments.map((seg, i) => {
         const fadeLead = i > 0 ? FADE_FRAMES : 0;

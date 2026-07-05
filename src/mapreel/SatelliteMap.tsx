@@ -7,7 +7,12 @@ import {
   tileScreenRect,
   visibleTiles,
 } from "./geo";
-import type { MapSegment, RulerAnnotation, Timeline } from "./types";
+import type {
+  LinkAnnotation,
+  MapSegment,
+  RulerAnnotation,
+  Timeline,
+} from "./types";
 
 const tileUrl = (template: string, z: number, x: number, y: number): string =>
   staticFile(
@@ -92,6 +97,33 @@ const HighlightPolygon: React.FC<{
   });
 
   const style = segment.highlightStyle ?? (segment.flagSrc ? "flag" : "hatch");
+
+  if (style === "solid") {
+    // GeoSolved's bright solid fill (their cyan Florida / Alaska look).
+    return (
+      <AbsoluteFill>
+        <svg width={width} height={height} style={{ position: "absolute" }}>
+          <path
+            d={d}
+            fill="rgba(45, 235, 255, 0.62)"
+            opacity={fillOpacity}
+            stroke="none"
+          />
+          <path
+            d={d}
+            fill="none"
+            stroke="rgba(220, 252, 255, 0.98)"
+            strokeWidth={5}
+            strokeLinejoin="round"
+            pathLength={100}
+            strokeDasharray={100}
+            strokeDashoffset={100 - draw * 100}
+            style={{ filter: "drop-shadow(0 0 14px rgba(45,235,255,0.9))" }}
+          />
+        </svg>
+      </AbsoluteFill>
+    );
+  }
 
   if (style === "neon") {
     // GeoSolved look: glowing outline + everything outside the border dims.
@@ -289,6 +321,69 @@ const Ruler: React.FC<{
   );
 };
 
+/** GeoSolved-style connection line: grows a→b, pulsing ring at the target. */
+const Link: React.FC<{
+  cam: Camera;
+  ann: LinkAnnotation;
+  tSec: number;
+}> = ({ cam, ann, tSec }) => {
+  const { width, height } = useVideoConfig();
+  const t = tSec - ann.startOffsetSec;
+  if (t < 0 || t > ann.durationSec) return null;
+
+  const grow = interpolate(t, [0, 0.9], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const fade = interpolate(t, [ann.durationSec - 0.4, ann.durationSec], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+
+  const p1 = project(cam, width, height, ann.a[0], ann.a[1]);
+  const p2 = project(cam, width, height, ann.b[0], ann.b[1]);
+  const ex = p1.x + (p2.x - p1.x) * grow;
+  const ey = p1.y + (p2.y - p1.y) * grow;
+  const pulse = 1 + 0.25 * Math.sin(t * 2 * Math.PI * 1.6);
+
+  return (
+    <AbsoluteFill style={{ opacity: fade }}>
+      <svg
+        width={width}
+        height={height}
+        style={{
+          position: "absolute",
+          filter: "drop-shadow(0 0 8px rgba(255,220,60,0.8))",
+        }}
+      >
+        <line
+          x1={p1.x}
+          y1={p1.y}
+          x2={ex}
+          y2={ey}
+          stroke="rgba(255, 224, 70, 0.95)"
+          strokeWidth={5}
+          strokeLinecap="round"
+        />
+        <circle cx={p1.x} cy={p1.y} r={9} fill="rgba(255, 224, 70, 0.95)" />
+        {grow >= 1 ? (
+          <>
+            <circle cx={p2.x} cy={p2.y} r={10} fill="rgba(255, 224, 70, 0.95)" />
+            <circle
+              cx={p2.x}
+              cy={p2.y}
+              r={26 * pulse}
+              fill="none"
+              stroke="rgba(255, 224, 70, 0.85)"
+              strokeWidth={4}
+            />
+          </>
+        ) : null}
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
 const PlaceLabel: React.FC<{
   cam: Camera;
   segment: MapSegment;
@@ -365,9 +460,13 @@ export const SatelliteMap: React.FC<{
           patternId={`hatch-${segmentIndex}`}
         />
       ) : null}
-      {(segment.annotations ?? []).map((ann, i) => (
-        <Ruler key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
-      ))}
+      {(segment.annotations ?? []).map((ann, i) =>
+        ann.type === "ruler" ? (
+          <Ruler key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
+        ) : (
+          <Link key={`ann-${i}`} cam={cam} ann={ann} tSec={tSec} />
+        )
+      )}
       <PlaceLabel cam={cam} segment={segment} tSec={tSec} />
       {/* subtle vignette for legibility */}
       <AbsoluteFill
