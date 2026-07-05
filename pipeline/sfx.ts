@@ -44,19 +44,25 @@ const makeRng = (seed: number) => {
 };
 
 const synthWhoosh = (): Float32Array => {
-  const dur = 1.15;
+  // Deep cinematic whoosh: noise through two cascaded low-passes whose
+  // cutoff peaks well below 1 kHz (no hiss), plus a soft sub-bass swell.
+  const dur = 1.4;
   const n = Math.floor(dur * SAMPLE_RATE);
   const out = new Float32Array(n);
   const rng = makeRng(1234567);
-  let lp = 0;
+  let lp1 = 0;
+  let lp2 = 0;
+  let subPhase = 0;
   for (let i = 0; i < n; i++) {
     const t = i / n;
-    // Low-pass cutoff sweeps up then down — the "passing by" feel.
-    const cutoff = 250 + 2800 * Math.sin(Math.PI * Math.pow(t, 0.8));
+    const cutoff = 80 + 620 * Math.sin(Math.PI * Math.pow(t, 0.85));
     const alpha = 1 - Math.exp((-2 * Math.PI * cutoff) / SAMPLE_RATE);
-    lp += alpha * (rng() * 2 - lp);
-    const env = Math.pow(Math.sin(Math.PI * t), 1.6);
-    out[i] = lp * env * 1.6;
+    lp1 += alpha * (rng() * 2 - lp1);
+    lp2 += alpha * (lp1 - lp2); // second pole = steeper rolloff, darker
+    const env = Math.pow(Math.sin(Math.PI * t), 1.4);
+    const subF = 55 - 22 * t; // sinking sub note under the sweep
+    subPhase += (2 * Math.PI * subF) / SAMPLE_RATE;
+    out[i] = (lp2 * 3.2 + Math.sin(subPhase) * 0.28 * env) * env;
   }
   return out;
 };
@@ -110,8 +116,9 @@ export const ensureSfx = (publicDir: string): SfxPaths => {
   ];
   const out = {} as SfxPaths;
   for (const [name, synth] of files) {
-    const file = path.join(dir, `${name}.wav`);
-    if (!fs.existsSync(file)) writeWav(file, synth());
+    // Always rewrite: synthesis is deterministic and cheap, and this keeps
+    // the files in sync when the sound design changes.
+    writeWav(path.join(dir, `${name}.wav`), synth());
     out[name] = `mapreel/sfx/${name}.wav`;
   }
   return out;

@@ -252,8 +252,9 @@ const Ruler: React.FC<{
         style={{
           position: "absolute",
           left: midX,
-          top: midY - 34,
-          transform: `translate(-50%, -100%) scale(${0.8 + 0.2 * labelIn})`,
+          // Below the line — the place label owns the space above it.
+          top: midY + 26,
+          transform: `translate(-50%, 0) scale(${0.8 + 0.2 * labelIn})`,
           opacity: labelIn,
           textAlign: "center",
           fontFamily: "Helvetica, Arial, sans-serif",

@@ -31,6 +31,30 @@ export interface SegmentOptions {
 
 const RULER_MIN_SEGMENT_SEC = 6;
 
+/**
+ * Where a horizontal line at `lat` enters and exits the polygon — the exact
+ * lon of the westmost and eastmost border crossings, or null if the line
+ * doesn't cross the shape.
+ */
+const borderSpanAtLat = (
+  rings: MapSegment["rings"],
+  lat: number
+): [number, number] | null => {
+  const xs: number[] = [];
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [x1, y1] = ring[j];
+      const [x2, y2] = ring[i];
+      if (y1 > lat !== y2 > lat) {
+        xs.push(x1 + ((lat - y1) / (y2 - y1)) * (x2 - x1));
+      }
+    }
+  }
+  if (xs.length < 2) return null;
+  xs.sort((a, b) => a - b);
+  return [xs[0], xs[xs.length - 1]];
+};
+
 const MIN_SEGMENT_SEC = 3;
 
 /** Turn geocoded places into back-to-back map segments in spoken order. */
@@ -77,12 +101,22 @@ export const placesToSegments = (
     segments.forEach((seg, i) => {
       if (seg.endSec - seg.startSec < RULER_MIN_SEGMENT_SEC) return;
       const bbox = bboxes[i];
-      // Lower third of the shape, so the ruler doesn't cross the place label.
-      const rulerLat = bbox[1] + (bbox[3] - bbox[1]) * 0.3;
-      const a: [number, number] = [bbox[0], rulerLat];
-      const b: [number, number] = [bbox[2], rulerLat];
-      const km = haversineKm(a, b);
-      if (km < 1) return;
+      // Try several latitudes in the lower half of the shape (below the
+      // place label) and keep the widest span whose endpoints sit exactly
+      // on the border.
+      let best: { a: [number, number]; b: [number, number]; km: number } | null =
+        null;
+      for (const frac of [0.22, 0.28, 0.34, 0.4]) {
+        const lat = bbox[1] + (bbox[3] - bbox[1]) * frac;
+        const span = borderSpanAtLat(seg.rings, lat);
+        if (!span) continue;
+        const a: [number, number] = [span[0], lat];
+        const b: [number, number] = [span[1], lat];
+        const km = haversineKm(a, b);
+        if (!best || km > best.km) best = { a, b, km };
+      }
+      if (!best || best.km < 1) return;
+      const { a, b, km } = best;
       const mi = km * 0.621371;
       seg.annotations = [
         {
