@@ -121,26 +121,6 @@ export interface SegmentCamera {
   zoomEnd: number;
 }
 
-/**
- * Deterministic camera path within a map segment: a cubic ease-out zoom-in
- * over the first ~3s, then a slow forward drift for the rest of the segment.
- * Shared by the component (per frame) and the tile prefetcher (sampled).
- */
-export const cameraAtTime = (
-  cam: SegmentCamera,
-  tSec: number,
-  segDurSec: number
-): Camera => {
-  const zoomInDur = Math.max(0.8, Math.min(3.2, segDurSec * 0.55));
-  const p = Math.max(0, Math.min(1, tSec / zoomInDur));
-  const eased = 1 - Math.pow(1 - p, 3);
-  let zoom = cam.zoomStart + (cam.zoomEnd - cam.zoomStart) * eased;
-  const driftSpan = Math.max(0.001, segDurSec - zoomInDur);
-  const drift = Math.max(0, Math.min(1, (tSec - zoomInDur) / driftSpan));
-  zoom += drift * 0.14;
-  return { lon: cam.lon, lat: cam.lat, zoom };
-};
-
 /** Zoom at which a lon/lat bbox fits within `frac` of the viewport. */
 export const fitZoom = (
   bbox: [number, number, number, number], // minLon, minLat, maxLon, maxLat
@@ -163,14 +143,49 @@ export const worldYToLat = (wy: number): number =>
 const smoothstep = (x: number): number =>
   x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
 
-/** Post-arrival forward drift added over the hold portion of a segment. */
-const DRIFT = 0.14;
+// Ken Burns hold: the camera never sits still. It arrives slightly wide of
+// the fit zoom and pushes in through it for the whole hold, while the center
+// glides a few percent of the viewport in a per-segment direction.
+const ARRIVE_BACKOFF = 0.3;
+const KB_ZOOM_SPAN = 0.62;
+const KB_PAN_FRAC = 0.055;
+const GOLDEN_ANGLE = 2.399963;
 
 export interface CameraSegment {
   startSec: number;
   endSec: number;
   camera: SegmentCamera;
 }
+
+/**
+ * Camera during a segment's hold phase, `h` ∈ [0,1] through the hold.
+ * Zoom rises linearly (constant exponential scale rate — the classic slow
+ * push), and the center pans through the place at a per-index angle.
+ */
+const holdCamera = (
+  seg: CameraSegment,
+  index: number,
+  h: number,
+  width: number,
+  height: number
+): { wx: number; wy: number; zoom: number } => {
+  const zoom = seg.camera.zoomEnd - ARRIVE_BACKOFF + KB_ZOOM_SPAN * h;
+  const viewW = width / (TILE_SIZE * Math.pow(2, seg.camera.zoomEnd));
+  const viewH = height / (TILE_SIZE * Math.pow(2, seg.camera.zoomEnd));
+  const angle = index * GOLDEN_ANGLE;
+  const off = h - 0.5;
+  return {
+    wx: lonToWorldX(seg.camera.lon) + Math.cos(angle) * viewW * KB_PAN_FRAC * off,
+    wy: latToWorldY(seg.camera.lat) + Math.sin(angle) * viewH * KB_PAN_FRAC * off,
+    zoom,
+  };
+};
+
+const toCamera = (s: { wx: number; wy: number; zoom: number }): Camera => ({
+  lon: s.wx * 360 - 180,
+  lat: worldYToLat(s.wy),
+  zoom: s.zoom,
+});
 
 /**
  * How long the camera flight into a segment lasts: scales with the mercator
@@ -190,12 +205,13 @@ export const flyDurationFor = (
 };
 
 /**
- * One continuous camera path over the whole video. The first segment is the
- * classic zoom-in intro; every later segment starts with a flight from the
- * previous place: centers pan in mercator space while the zoom follows a
- * "zoom out, then back in" arc deep enough to keep both places framable —
- * far hops zoom way out, neighbors barely at all. Shared by the renderer
- * and the tile prefetcher, so drawn tiles are always downloaded.
+ * One continuous camera path over the whole video, Ken Burns throughout —
+ * the camera is never static. The first segment is a zoom-in intro that
+ * hands off into the slow push; every later segment starts with a flight
+ * from the previous place (centers pan in mercator space while the zoom
+ * follows a "zoom out, then back in" arc deep enough to keep both places
+ * framable), landing into its own slow push. Shared by the renderer and
+ * the tile prefetcher, so drawn tiles are always downloaded.
  */
 export const cameraAtGlobalTime = (
   segments: CameraSegment[],
@@ -215,40 +231,48 @@ export const cameraAtGlobalTime = (
   const dur = seg.endSec - seg.startSec;
   const t = Math.min(Math.max(tSec - seg.startSec, 0), dur);
 
-  if (i === 0) return cameraAtTime(seg.camera, t, dur);
+  if (i === 0) {
+    // Intro: ease from the wide start zoom into the start of the slow push.
+    const zoomInDur = Math.max(0.8, Math.min(3.2, dur * 0.55));
+    const target = holdCamera(seg, 0, 0, width, height);
+    if (t < zoomInDur) {
+      const eased = 1 - Math.pow(1 - t / zoomInDur, 3);
+      return toCamera({
+        wx: target.wx,
+        wy: target.wy,
+        zoom: seg.camera.zoomStart + (target.zoom - seg.camera.zoomStart) * eased,
+      });
+    }
+    const h = Math.min(1, (t - zoomInDur) / Math.max(0.001, dur - zoomInDur));
+    return toCamera(holdCamera(seg, 0, h, width, height));
+  }
 
   const prev = segments[i - 1];
   const fly = flyDurationFor(prev, seg);
   if (t >= fly) {
-    const hold = Math.min(1, (t - fly) / Math.max(0.001, dur - fly));
-    return {
-      lon: seg.camera.lon,
-      lat: seg.camera.lat,
-      zoom: seg.camera.zoomEnd + DRIFT * hold,
-    };
+    const h = Math.min(1, (t - fly) / Math.max(0.001, dur - fly));
+    return toCamera(holdCamera(seg, i, h, width, height));
   }
 
+  // Flight: from the end of the previous push to the start of this one.
+  const from = holdCamera(prev, i - 1, 1, width, height);
+  const to = holdCamera(seg, i, 0, width, height);
   const e = smoothstep(t / fly);
-  const x1 = lonToWorldX(prev.camera.lon);
-  const y1 = latToWorldY(prev.camera.lat);
-  const x2 = lonToWorldX(seg.camera.lon);
-  const y2 = latToWorldY(seg.camera.lat);
-  const z1 = prev.camera.zoomEnd + DRIFT;
-  const z2 = seg.camera.zoomEnd;
 
   // Zoom deep enough mid-flight that origin and destination could both fit.
-  const d = Math.hypot(x2 - x1, y2 - y1);
+  const d = Math.hypot(to.wx - from.wx, to.wy - from.wy);
   const zBoth =
     d < 1e-9
       ? 12
       : Math.log2((0.45 * Math.min(width, height)) / (TILE_SIZE * d));
-  const arcFloor = Math.min(z1, z2, Math.max(1.8, zBoth));
-  const bump = Math.max(0, (z1 + z2) / 2 - arcFloor);
-  const zoom = z1 + (z2 - z1) * e - bump * Math.sin(Math.PI * e);
+  const arcFloor = Math.min(from.zoom, to.zoom, Math.max(1.8, zBoth));
+  const bump = Math.max(0, (from.zoom + to.zoom) / 2 - arcFloor);
 
-  const wx = x1 + (x2 - x1) * e;
-  const wy = y1 + (y2 - y1) * e;
-  return { lon: wx * 360 - 180, lat: worldYToLat(wy), zoom };
+  return toCamera({
+    wx: from.wx + (to.wx - from.wx) * e,
+    wy: from.wy + (to.wy - from.wy) * e,
+    zoom: from.zoom + (to.zoom - from.zoom) * e - bump * Math.sin(Math.PI * e),
+  });
 };
 
 /** Great-circle distance between two lon/lat points in km. */
