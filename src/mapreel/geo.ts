@@ -295,3 +295,126 @@ export const bboxCenter = (
   lon: (bbox[0] + bbox[2]) / 2,
   lat: (bbox[1] + bbox[3]) / 2,
 });
+
+// ── 3D globe (orthographic) camera ───────────────────────────────────────────
+// A globe camera is a rotation (rotate[0]=λ=-lon, rotate[1]=φ=-lat) plus an
+// orthographic scale in px. The camera spins the globe to face each place and
+// slowly pushes in (Ken Burns) during the hold; between places it eases the
+// rotation along the shortest path while dipping the scale so the globe pulls
+// back, reads as a spin, then zooms into the next country.
+
+export interface GlobeCamera {
+  lambda: number;
+  phi: number;
+  scale: number;
+}
+
+const GLOBE_ARRIVE = 0.92; // arrive slightly pulled back, then push in
+const GLOBE_PUSH = 1.14; // total push-in factor across a hold
+const GLOBE_DRIFT_DEG = 3; // lon drift across a hold
+
+/** Orthographic scale that frames a mercator `zoom`'s angular span. */
+export const globeScaleForZoom = (zoom: number, minDim: number): number => {
+  const worldSpan = minDim / (TILE_SIZE * Math.pow(2, zoom));
+  const ang = Math.min(Math.PI * 0.96, worldSpan * 2 * Math.PI);
+  return minDim / 2 / Math.max(0.03, Math.sin(ang / 2));
+};
+
+/** Scale that frames a great-circle span of `angleDeg` (with margin). */
+const globeScaleForAngle = (angleDeg: number, minDim: number): number => {
+  const ang = Math.min(Math.PI * 0.96, (angleDeg * 1.5 * Math.PI) / 180);
+  return minDim / 2 / Math.max(0.03, Math.sin(ang / 2));
+};
+
+/** Great-circle angle in degrees between two lon/lat points. */
+const angleBetween = (
+  aLon: number,
+  aLat: number,
+  bLon: number,
+  bLat: number
+): number => {
+  const toR = Math.PI / 180;
+  const c =
+    Math.sin(aLat * toR) * Math.sin(bLat * toR) +
+    Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.cos((bLon - aLon) * toR);
+  return (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI;
+};
+
+/** Shortest signed angular delta a→b in degrees (wraps at ±180). */
+const wrapDeg = (d: number): number => ((((d + 180) % 360) + 360) % 360) - 180;
+
+const globeHold = (
+  seg: CameraSegment,
+  minDim: number,
+  h: number
+): GlobeCamera => {
+  const base = globeScaleForZoom(seg.camera.zoomEnd, minDim);
+  return {
+    lambda: -seg.camera.lon + (h - 0.5) * GLOBE_DRIFT_DEG,
+    phi: -seg.camera.lat,
+    scale: base * (GLOBE_ARRIVE + (GLOBE_PUSH - GLOBE_ARRIVE) * h),
+  };
+};
+
+/**
+ * Continuous globe camera over the whole video. Segment 0 spins + zooms in
+ * from a pulled-back globe; later segments spin from the previous place along
+ * the shortest rotation while the scale dips (pull back) then pushes into the
+ * new country. Ken Burns throughout — never static.
+ */
+export const globeCameraAtGlobalTime = (
+  segments: CameraSegment[],
+  tSec: number,
+  width: number,
+  height: number
+): GlobeCamera => {
+  const minDim = Math.min(width, height);
+  if (segments.length === 0) return { lambda: 0, phi: 0, scale: minDim * 0.45 };
+
+  let i = segments.length - 1;
+  for (let k = 0; k < segments.length; k++) {
+    if (tSec < segments[k].endSec) {
+      i = k;
+      break;
+    }
+  }
+  const seg = segments[i];
+  const dur = seg.endSec - seg.startSec;
+  const t = Math.min(Math.max(tSec - seg.startSec, 0), dur);
+
+  if (i === 0) {
+    const target = globeHold(seg, minDim, 0);
+    const introDur = Math.max(0.8, Math.min(3.2, dur * 0.55));
+    if (t < introDur) {
+      const e = 1 - Math.pow(1 - t / introDur, 3);
+      return {
+        lambda: target.lambda + (1 - e) * 34, // spin ~34° into place
+        phi: target.phi,
+        scale: minDim * 0.45 + (target.scale - minDim * 0.45) * e,
+      };
+    }
+    const h = Math.min(1, (t - introDur) / Math.max(0.001, dur - introDur));
+    return globeHold(seg, minDim, h);
+  }
+
+  const prev = segments[i - 1];
+  const fly = flyDurationFor(prev, seg);
+  if (t >= fly) {
+    const h = Math.min(1, (t - fly) / Math.max(0.001, dur - fly));
+    return globeHold(seg, minDim, h);
+  }
+
+  const from = globeHold(prev, minDim, 1);
+  const to = globeHold(seg, minDim, 0);
+  const e = smoothstep(t / fly);
+
+  const dAng = angleBetween(prev.camera.lon, prev.camera.lat, seg.camera.lon, seg.camera.lat);
+  const dip = globeScaleForAngle(Math.max(dAng, 8), minDim);
+  const bump = Math.max(0, (from.scale + to.scale) / 2 - dip);
+
+  return {
+    lambda: from.lambda + wrapDeg(to.lambda - from.lambda) * e,
+    phi: from.phi + (to.phi - from.phi) * e,
+    scale: from.scale + (to.scale - from.scale) * e - bump * Math.sin(Math.PI * e),
+  };
+};

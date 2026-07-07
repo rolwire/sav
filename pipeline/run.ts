@@ -16,6 +16,7 @@
  *   --no-ruler           Skip the auto "X miles / Y km" width ruler
  *   --music <file>       Background music, auto-ducked under the VO
  *   --links              Draw a connection line from the previous place on each cut
+ *   --globe              Render a 3D spinning globe instead of the flat map (no tiles)
  *   --style <s>          Highlight style for every place: neon, solid, or hatch
  *   --aspect <a>         9:16 (default), 16:9, or both
  *
@@ -99,19 +100,26 @@ const main = async (): Promise<void> => {
   const names = segmentsByAspect[0].segments.map((s) => s.name).join(" → ");
   console.log(`  ${segmentsByAspect[0].segments.length} map segments: ${names}`);
 
+  const projection: "flat" | "globe" = args.globe ? "globe" : "flat";
+
   // ── 3. Satellite tiles ────────────────────────────────────────────────────
-  console.log("\n[3/5] Downloading satellite tiles (Esri World Imagery)...");
-  const tilesDir = path.join(PUBLIC_DIR, "tiles");
-  ensureDir(tilesDir);
+  // Globe mode renders entirely from bundled vector data — no tiles needed.
   const tileMinZoom = 2;
   const tileMaxZoom = 12;
-  for (const { aspect, segments } of segmentsByAspect) {
-    console.log(`  ${aspect.name}:`);
-    await downloadTiles(
-      segments,
-      { width: aspect.width, height: aspect.height, fps: FPS, minZoom: tileMinZoom, maxZoom: tileMaxZoom },
-      tilesDir
-    );
+  if (projection === "globe") {
+    console.log("\n[3/5] Globe mode — no satellite tiles needed (vector render).");
+  } else {
+    console.log("\n[3/5] Downloading satellite tiles (Esri World Imagery)...");
+    const tilesDir = path.join(PUBLIC_DIR, "tiles");
+    ensureDir(tilesDir);
+    for (const { aspect, segments } of segmentsByAspect) {
+      console.log(`  ${aspect.name}:`);
+      await downloadTiles(
+        segments,
+        { width: aspect.width, height: aspect.height, fps: FPS, minZoom: tileMinZoom, maxZoom: tileMaxZoom },
+        tilesDir
+      );
+    }
   }
 
   // ── 4. Keyword photos ─────────────────────────────────────────────────────
@@ -134,7 +142,9 @@ const main = async (): Promise<void> => {
   fs.copyFileSync(voPath, voDest);
 
   const credits = [
-    "Imagery © Esri World Imagery · Map data © OpenStreetMap contributors",
+    projection === "globe"
+      ? "Map data © Natural Earth · OpenStreetMap contributors"
+      : "Imagery © Esri World Imagery · Map data © OpenStreetMap contributors",
     ...new Set(photoCues.map((p) => `Photo: ${p.attribution}`).filter(Boolean)),
   ].slice(0, 5) as string[];
 
@@ -159,12 +169,13 @@ const main = async (): Promise<void> => {
       height: aspect.height,
       durationSec,
       audioSrc: `mapreel/${path.basename(voDest)}`,
-      tileTemplate: "mapreel/tiles/{z}/{x}/{y}.jpg",
+      tileTemplate: projection === "globe" ? null : "mapreel/tiles/{z}/{x}/{y}.jpg",
       tileMinZoom,
       tileMaxZoom,
       credits,
       sfx,
       musicSrc,
+      projection,
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

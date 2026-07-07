@@ -259,9 +259,7 @@ const main = (): void => {
   ];
   attachFlags(places, PUBLIC_DIR);
 
-  console.log("Generating procedural satellite tiles over real coastlines...");
-  const renderTileSvg = makeTileRenderer(countries);
-  const tilesDir = path.join(PUBLIC_DIR, "tiles");
+  const projection: "flat" | "globe" = args.globe ? "globe" : "flat";
   const segmentsByAspect = aspects.map((aspect) => ({
     aspect,
     segments: placesToSegments(places, durationSec, aspect.width, aspect.height, {
@@ -275,21 +273,29 @@ const main = (): void => {
       return s;
     }),
   }));
-  for (const { aspect, segments } of segmentsByAspect) {
-    const tileCfg = {
-      width: aspect.width,
-      height: aspect.height,
-      fps: FPS,
-      minZoom: 2,
-      maxZoom: 9,
-    };
-    const tiles = enumerateTiles(segments, tileCfg);
-    for (const t of tiles) {
-      const dir = path.join(tilesDir, String(t.z), String(t.x));
-      ensureDir(dir);
-      fs.writeFileSync(path.join(dir, `${t.y}.svg`), renderTileSvg(t.z, t.x, t.y));
+
+  if (projection === "globe") {
+    console.log("Globe mode — rendering from bundled vector data (no tiles).");
+  } else {
+    console.log("Generating procedural satellite tiles over real coastlines...");
+    const renderTileSvg = makeTileRenderer(countries);
+    const tilesDir = path.join(PUBLIC_DIR, "tiles");
+    for (const { aspect, segments } of segmentsByAspect) {
+      const tileCfg = {
+        width: aspect.width,
+        height: aspect.height,
+        fps: FPS,
+        minZoom: 2,
+        maxZoom: 9,
+      };
+      const tiles = enumerateTiles(segments, tileCfg);
+      for (const t of tiles) {
+        const dir = path.join(tilesDir, String(t.z), String(t.x));
+        ensureDir(dir);
+        fs.writeFileSync(path.join(dir, `${t.y}.svg`), renderTileSvg(t.z, t.x, t.y));
+      }
+      console.log(`  ${aspect.name}: wrote ${tiles.length} tiles`);
     }
-    console.log(`  ${aspect.name}: wrote ${tiles.length} tiles`);
   }
 
   console.log("Generating placeholder photos...");
@@ -325,14 +331,17 @@ const main = (): void => {
       height: aspect.height,
       durationSec,
       audioSrc: null,
-      tileTemplate: "mapreel/tiles/{z}/{x}/{y}.svg",
+      tileTemplate: projection === "globe" ? null : "mapreel/tiles/{z}/{x}/{y}.svg",
       tileMinZoom: 2,
       tileMaxZoom: 9,
       credits: [
-        "Demo mode — borders: Natural Earth · flags: flag-icons · imagery: procedural",
+        projection === "globe"
+          ? "Demo mode — 3D globe · borders: Natural Earth · flags: flag-icons"
+          : "Demo mode — borders: Natural Earth · flags: flag-icons · imagery: procedural",
       ],
       sfx,
       musicSrc,
+      projection,
     });
     const timelinePath = path.join(TIMELINE_DIR, aspect.timelineFile);
     fs.writeFileSync(timelinePath, JSON.stringify(timeline, null, 2));

@@ -9,6 +9,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { Captions } from "./Captions";
+import { GlobeStage } from "./Globe";
 import { PhotoPopup } from "./PhotoPopup";
 import { MapStage } from "./SatelliteMap";
 import type { Timeline } from "./types";
@@ -104,7 +105,11 @@ const MapReelBase: React.FC<{ timeline: Timeline }> = ({ timeline }) => {
         />
       ) : null}
 
-      <MapStage timeline={timeline} />
+      {timeline.projection === "globe" ? (
+        <GlobeStage timeline={timeline} />
+      ) : (
+        <MapStage timeline={timeline} />
+      )}
 
       {timeline.photos.map((cue, i) => (
         <Sequence

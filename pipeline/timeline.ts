@@ -24,6 +24,8 @@ export interface TimelineOptions {
   sfx?: SfxPaths | null;
   /** Background music, auto-ducked under the VO by the composition. */
   musicSrc?: string | null;
+  /** "flat" satellite map (default) or "globe" 3D orthographic globe. */
+  projection?: "flat" | "globe";
 }
 
 export interface SegmentOptions {
@@ -232,6 +234,7 @@ export const buildTimeline = (
     durationInFrames: Math.round(opts.durationSec * fps),
     audioSrc: opts.audioSrc,
     musicSrc: opts.musicSrc ?? null,
+    projection: opts.projection ?? "flat",
     tileTemplate: opts.tileTemplate,
     tileMinZoom: opts.tileMinZoom ?? 2,
     tileMaxZoom: opts.tileMaxZoom ?? 12,

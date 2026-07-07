@@ -80,6 +80,8 @@ export interface Timeline {
   width: number;
   height: number;
   durationInFrames: number;
+  /** "flat" satellite map (default) or "globe" 3D orthographic globe */
+  projection?: "flat" | "globe";
   /** staticFile-relative audio path, or null for silent preview */
   audioSrc: string | null;
   /** staticFile-relative background music, auto-ducked under the VO */

@@ -55,8 +55,18 @@ npm run reel:render:wide     # 16:9  -> out/mapreel-wide.mp4 (MapReelWide)
 --no-sfx              # skip whoosh/pop/ding sound effects
 --no-ruler            # skip the auto "X miles / Y km" width ruler
 --style neon          # GeoSolved-style glowing outline for every place
+--globe               # render a 3D spinning globe instead of the flat map
 --aspect both         # 9:16 (default), 16:9, or both
 ```
+
+### Flat map vs 3D globe
+
+By default the camera flies over a **flat satellite map** (Esri tiles). Pass
+`--globe` for a **3D orthographic globe** that spins from country to country.
+Globe mode renders entirely from bundled vector data (Natural Earth coastlines
++ borders, `flag-icons` flags) — it needs **no tile downloads and no network**,
+so it works fully offline. All the extras (flag/solid/neon highlights, rulers,
+connection lines, labels, photos, captions, SFX) project onto the globe too.
 
 ## Styles & extras
 
