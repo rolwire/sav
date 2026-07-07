@@ -1,0 +1,6 @@
+node_modules/
+out/
+build/
+.whisper/
+# Generated pipeline assets (tiles, photos, VO copies)
+public/mapreel/
