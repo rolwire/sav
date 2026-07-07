@@ -262,15 +262,11 @@ const main = (): void => {
   const projection: "flat" | "globe" = args.globe ? "globe" : "flat";
   const segmentsByAspect = aspects.map((aspect) => ({
     aspect,
+    // Every country paints with its real flag (default when a flag is set).
+    // Use --style solid|neon on the real pipeline to force another look.
     segments: placesToSegments(places, durationSec, aspect.width, aspect.height, {
       rulers: true,
       links: true,
-    }).map((s) => {
-      // Showcase every look: Nigeria = flag fill, Ghana = solid cyan,
-      // Benin = neon outline. Links draw between consecutive places.
-      if (s.name === "Ghana") return { ...s, highlightStyle: "solid" as const };
-      if (s.name === "Benin") return { ...s, highlightStyle: "neon" as const };
-      return s;
     }),
   }));
 
