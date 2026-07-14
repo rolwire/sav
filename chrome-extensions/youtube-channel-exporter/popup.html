@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YouTube Channel Exporter</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>Channel Exporter</h1>
+    <p class="sub">Open a channel's <b>Videos</b> tab, then collect.</p>
+  </header>
+
+  <section class="controls">
+    <button id="collect" class="primary">1 &middot; Collect all videos</button>
+    <label class="row">
+      <input type="checkbox" id="sortViews" checked />
+      Sort by highest views
+    </label>
+    <div class="btn-grid">
+      <button id="copyTitles" disabled>Copy titles</button>
+      <button id="exportXlsx" disabled>Export .xlsx</button>
+      <button id="exportCsv" disabled>Export .csv</button>
+    </div>
+  </section>
+
+  <div id="status" class="status">Idle.</div>
+
+  <div id="preview" class="preview"></div>
+
+  <script src="lib/zip.js"></script>
+  <script src="lib/xlsx.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
