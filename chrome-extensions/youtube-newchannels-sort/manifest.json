@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube New-Channels Sorter",
+  "version": "1.0.0",
+  "description": "When you search a topic on YouTube, re-sort the results to surface videos from newer / smaller channels instead of the same big ones.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.youtube.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/results*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
