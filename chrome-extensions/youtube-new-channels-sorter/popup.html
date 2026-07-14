@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>New-Channels Sorter</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="logo">🔍</div>
+      <div>
+        <h1>New-Channels Sorter</h1>
+        <p class="sub">Surface small &amp; fresh channels</p>
+      </div>
+    </header>
+
+    <div id="notice" class="notice hidden"></div>
+
+    <section class="panel">
+      <div class="context" id="context">Checking page…</div>
+
+      <label class="field">
+        <span>Sort results by</span>
+        <select id="mode">
+          <option value="opportunity" selected>Opportunity (small channel, big views)</option>
+          <option value="newest">Newest channels first</option>
+          <option value="fewest_subs">Fewest subscribers first</option>
+        </select>
+      </label>
+
+      <div class="two">
+        <label class="field">
+          <span>"New" = under</span>
+          <select id="maxSubs">
+            <option value="1000">1K subs</option>
+            <option value="10000">10K subs</option>
+            <option value="50000" selected>50K subs</option>
+            <option value="100000">100K subs</option>
+            <option value="1000000000">Any size</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>…or created within</span>
+          <select id="maxAge">
+            <option value="0">Ignore age</option>
+            <option value="183">6 months</option>
+            <option value="365" selected>1 year</option>
+            <option value="730">2 years</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="check">
+        <input id="hideOthers" type="checkbox" />
+        <span>Hide channels that aren't "new"</span>
+      </label>
+
+      <button id="apply" class="btn primary">Analyze &amp; sort this search</button>
+      <button id="reset" class="btn hidden">Reset to YouTube order</button>
+
+      <div id="progress" class="progress hidden">
+        <div class="spinner"></div>
+        <span id="progressText">Reading channels…</span>
+      </div>
+    </section>
+
+    <section id="summary" class="panel hidden">
+      <div class="stats">
+        <div class="stat"><strong id="sTotal">0</strong><small>results</small></div>
+        <div class="stat"><strong id="sChannels">0</strong><small>channels</small></div>
+        <div class="stat"><strong id="sNew">0</strong><small>new/small</small></div>
+      </div>
+      <p class="hint">Green-outlined videos come from new or small channels. Badges show 👤 subscribers · 🗓 channel age · 🔥 views vs. subscribers.</p>
+    </section>
+
+    <footer class="app-footer">
+      Search a topic on YouTube, then hit <em>Analyze</em>. Channel data is read
+      from public channel pages.
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

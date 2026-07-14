@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube New-Channels Sorter — Find Small & Fresh Channels",
+  "version": "1.0.0",
+  "description": "Search a topic on YouTube and re-sort results to surface videos from new, small or fast-growing channels. Shows subscriber count and channel age on each result.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://www.youtube.com/*"],
+  "action": {
+    "default_title": "YouTube New-Channels Sorter",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

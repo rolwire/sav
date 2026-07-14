@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>YouTube Channel Exporter</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="logo">▶</div>
+      <div>
+        <h1>Channel Exporter</h1>
+        <p class="sub">Titles · views · thumbnails → Excel</p>
+      </div>
+    </header>
+
+    <div id="notice" class="notice hidden"></div>
+
+    <section class="panel">
+      <div class="context" id="context">Checking page…</div>
+
+      <div class="controls">
+        <label class="field">
+          <span>Sort by</span>
+          <select id="sort">
+            <option value="views_desc" selected>Views — high to low</option>
+            <option value="views_asc">Views — low to high</option>
+            <option value="date">Channel order (as shown)</option>
+            <option value="title">Title A → Z</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Max videos</span>
+          <input id="maxVideos" type="number" min="0" step="10" value="0" />
+          <small>0 = all</small>
+        </label>
+        <label class="check">
+          <input id="autoScroll" type="checkbox" checked />
+          <span>Auto-scroll to load every video</span>
+        </label>
+      </div>
+
+      <button id="scan" class="btn primary">Scan channel</button>
+
+      <div id="progress" class="progress hidden">
+        <div class="spinner"></div>
+        <span id="progressText">Working…</span>
+      </div>
+    </section>
+
+    <section id="results" class="panel hidden">
+      <div class="summary">
+        <strong id="count">0</strong> videos ·
+        <span id="totalViews">0</span> total views
+      </div>
+
+      <div class="actions">
+        <button id="copyTitles" class="btn">Copy all titles</button>
+        <button id="exportXlsx" class="btn primary">Export .xlsx</button>
+        <button id="exportCsv" class="btn">Export .csv</button>
+      </div>
+
+      <div id="preview" class="preview"></div>
+    </section>
+
+    <footer class="app-footer">
+      Tip: open a channel's <em>Videos</em> tab for the best results.
+    </footer>
+
+    <script src="xlsx.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
