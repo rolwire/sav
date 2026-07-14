@@ -1,0 +1,32 @@
+/* Badges + highlight injected into YouTube search results. */
+.yncs-badge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+  font-family: "Roboto", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.yncs-badge > span {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.yncs-sub   { background: #eef0f3; color: #303540; }
+.yncs-age   { background: #e7f0ff; color: #1a4fb4; }
+.yncs-fire  { background: #fff0e2; color: #c05600; }
+.yncs-new   { background: #22c55e; color: #fff; letter-spacing: 0.04em; }
+.yncs-small { background: #d6f3ea; color: #0c7c5a; letter-spacing: 0.03em; }
+.yncs-err   { background: #fdecec; color: #b42318; }
+
+html[dark] .yncs-sub,   ytd-app[darker-dark-theme] .yncs-sub   { background: #2a2d33; color: #e6e7ea; }
+html[dark] .yncs-age,   ytd-app[darker-dark-theme] .yncs-age   { background: #24344f; color: #9dc0ff; }
+html[dark] .yncs-fire,  ytd-app[darker-dark-theme] .yncs-fire  { background: #3d2a17; color: #ffb066; }
+
+ytd-video-renderer.yncs-highlight {
+  outline: 2px solid rgba(34, 197, 94, 0.55);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
